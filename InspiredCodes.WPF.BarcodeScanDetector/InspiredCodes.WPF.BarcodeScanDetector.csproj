@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net48;net6.0-windows;net8.0-windows;net10.0-windows</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14.0</LangVersion>
+
+    <AssemblyVersion>2.0.1.0</AssemblyVersion>
+    <SignAssembly>True</SignAssembly>
+    <FileVersion>2.0.1.0</FileVersion>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Version>2.0.1</Version>
+    <Authors>Peter Metz (pmetz@inspired.codes), Steven Lee</Authors>
+    <Company>Inspired Codes</Company>
+    <Product>WPF Barcode Scan Detector Extensions</Product>
+    <Description>WPF extensions for the Barcode Scan Detector</Description>
+    <Copyright>Inspired Codes 2026</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InspiredCodes.BarcodeScanDetector\InspiredCodes.BarcodeScanDetector.csproj" />
+  </ItemGroup>
+
+</Project>

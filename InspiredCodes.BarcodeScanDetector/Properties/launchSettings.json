@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "Steelcase.Barcodes": {
+      "commandName": "Executable"
+    }
+  }
+}

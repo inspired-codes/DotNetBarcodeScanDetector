@@ -1,0 +1,7 @@
+bin/
+obj/
+TestResults/
+.vs/
+.git/
+*.png
+*.ico
