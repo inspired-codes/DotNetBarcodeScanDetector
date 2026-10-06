@@ -8,7 +8,7 @@ A .NET library that tells barcode-scanner input (which emulates a fast burst of 
 
 ## Commands
 
-Only the core library and its tests build and run on Linux/macOS. Every other project targets `net48` / `net*-windows` (WPF, WinForms, their tests, the demos) and fails on non-Windows with `NETSDK1100` unless `-p:EnableWindowsTargeting=true` is passed, and even then the tests can't run.
+Only the core library and its tests build and run on Linux/macOS. Every other project targets `net48` / `net*-windows` (WPF, WinForms, their tests, the demos) and fails on non-Windows with `NETSDK1100` unless `-p:EnableWindowsTargeting=true` is passed. With that flag all four Windows target frameworks of the adapters, demos and their tests compile on Linux (use it to compile-check changes), but the tests can't be executed there.
 
 ```bash
 dotnet build InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj

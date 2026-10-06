@@ -88,12 +88,16 @@ Facts the plan relies on:
   - **Tests:** `ConcurrencyTests`: simultaneous newlines raise exactly one event (the red test above); the handler runs outside the lock; concurrent input plus `Reset()` does not throw. Mutation-checked: removing the lock fails the first, raising the event inside the lock fails the second.
   - **Test-hygiene lesson:** the detectors are static, so a test that subscribes to `BarcodeScanned` and doesn't unsubscribe changes every later test (an early version of `HandlerRunsOutsideTheDetectorLock` made three unrelated tests fail only in a full run). Always unsubscribe in `finally`/`[TestCleanup]`. `ScanDetectorTests` (original code) still leaves handlers subscribed; they only record into old queues, but tidy this up in B3.
 
-### A7. Idempotent UI registration
+### A7. Idempotent UI registration — DONE (tests written and compiled, **not yet run**)
 * **Files:** `WpfScanDetectorExtensions.cs`, `WinFormsScanDetectorExtensions.cs`
 * **Actions:**
-  - In each `Register…` method, detach the static handler (`-=`) before attaching (`+=`). This is idempotent because both use the same static method group.
-  - Document that WinForms parent forms need `KeyPreview = true` to see child-control keystrokes, and that neither adapter suppresses input.
-  - Note the limitation honestly: the handlers forward to the **global** detector, so two registered windows share one state machine until C2 lands.
+  - In each `Register…` method (`RegisterTextInput`, `RegisterPreviewTextInput`, `RegisterKeyPress`), detach the static handler (`-=`) before attaching (`+=`). This is idempotent because both use the same static method group; a scratch program with the same pattern showed 2 handlers after a double register (and 1 leaked after one unregister) with plain `+=`, versus exactly 1 and 0 with detach-first.
+  - XML docs on both extension classes: the adapters only observe (input still reaches the focused control), all registered elements/controls share the one global detector until C2, repeated registration is harmless and one `UnRegister` detaches. The WinForms `RegisterKeyPress` doc states that a form only sees child-control keys with `KeyPreview = true`.
+  - **Tests (xunit, Windows-only to run):**
+    - WPF: `MockInputElement` gained `TextInputHandlerCount`/`PreviewTextInputHandlerCount` (via `GetInvocationList`), so idempotency is asserted without a WPF dispatcher: register twice → 1 handler; unregister after a double register → 0; re-register after unregister → 1; unregister when never registered is a no-op; text and preview registrations are independent.
+    - WinForms: a `Control` subclass raises `KeyPress` through the protected `OnKeyPress`, and the tests assert through the real detector: a double registration must give `ABC`, not `AABBCC`; unregister after a double register stops forwarding; re-registration works. Each test resets the static detector, widens the threshold to 1 s and restores it.
+  - **Verification status:** all four Windows targets (`net48`, `net6.0-windows`, `net8.0-windows`, `net10.0-windows`) of both adapters, both test projects and both demos **compile** on Linux with `-p:EnableWindowsTargeting=true`, but these tests could not be executed there. **Run `dotnet test` on both test projects on Windows before relying on A7**, and confirm at least one of them fails without the `-=` line.
+  - Limitation (unchanged until C2): the handlers forward to the **global** detector, so two registered windows share one state machine.
 
 ### A8. `sender` parameter decision
 * **Files:** `GenericScanDetector.cs`, `ScanDetector.cs`

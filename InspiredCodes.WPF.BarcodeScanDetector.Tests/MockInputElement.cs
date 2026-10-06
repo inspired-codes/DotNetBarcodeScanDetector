@@ -11,6 +11,10 @@ public class MockInputElement : IInputElement
     public void RaiseTextInput(TextCompositionEventArgs e) => TextInput?.Invoke(this, e);
     public void RaisePreviewTextInput(TextCompositionEventArgs e) => PreviewTextInput?.Invoke(this, e);
 
+    // how many handlers are attached, without needing a WPF dispatcher to raise real input
+    public int TextInputHandlerCount => TextInput?.GetInvocationList().Length ?? 0;
+    public int PreviewTextInputHandlerCount => PreviewTextInput?.GetInvocationList().Length ?? 0;
+
     // Required interface members (not used in tests)
     public bool IsMouseOver => false;
     public bool IsMouseDirectlyOver => false;
