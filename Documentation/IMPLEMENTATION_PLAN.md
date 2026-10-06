@@ -190,11 +190,13 @@ Goal: the toolchain decisions are in place and the **current** engine's 78 core 
 * While migrating, unsubscribe the handlers `ScanDetectorTests` leaves attached.
 * **Done when:** the same 78 tests pass on `net10.0` (Linux) and on `net48` + `net10.0` (Windows), and a spot mutation (e.g. removing the A6 lock, removing the A3 empty-text guard) still fails them.
 
-### 1.2 Remove assembly signing
-* Remove `<SignAssembly>True</SignAssembly>` from the core and WPF csproj (and anywhere else). This also removes the earlier `InternalsVisibleTo` concern.
+### 1.2 Remove assembly signing — DONE
+* Removed `<SignAssembly>True</SignAssembly>` from the core and WPF csproj (no other project had it). It had no effect: there was no key file in the repository and the built assemblies were **not** strong-named *(verified before and after)*, so the output is unchanged. This also removes the earlier `InternalsVisibleTo` concern.
 
-### 1.3 Standard `Debug`/`Release` configurations
-* Remove `<Configurations>Debug;Optimized</Configurations>` and the `Optimized` property groups from the core and core-test csproj; `Release` gets `<Optimize>true</Optimize>`. Update `CLAUDE.md` (it documents `Debug;Optimized`).
+### 1.3 Standard `Debug`/`Release` configurations — DONE
+* Removed `<Configurations>Debug;Optimized</Configurations>` and the custom `Debug`/`Optimized` property groups from the core and core-test csproj, and the `<BuildType Project="Debug" />` pin from the solution (it forced the core tests to `Debug` in every solution configuration). Both configurations now use the SDK defaults, so `Release` gets `Optimize=true`.
+* Effective changes *(verified with `-getProperty`)*: `Release` is unchanged (it already got the SDK defaults); `Debug` now produces a `portable` PDB instead of `full`; the `Optimized` configuration is gone, and with it the `CheckForOverflowUnderflow` the core tests had only there.
+* Verified: the whole solution (Windows projects via `-p:EnableWindowsTargeting=true`) builds in `Debug` and `Release` with 0 errors and the same 10 pre-existing CS8618 warnings; the core tests pass (78/78) in both; a `Release` solution build now builds the core tests as `Release`.
 
 ### 1.4 Core csproj fixes
 * Fix `<FileVersion>$(AssemlbyVersion)</FileVersion>` → `$(AssemblyVersion)` (cosmetic: the SDK already falls back to `2.0.1.0` *(verified)*).

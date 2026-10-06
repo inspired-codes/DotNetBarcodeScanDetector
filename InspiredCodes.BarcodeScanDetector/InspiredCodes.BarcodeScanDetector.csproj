@@ -6,10 +6,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>14.0</LangVersion>
 
-        <Configurations>Debug;Optimized</Configurations>
-
         <AssemblyVersion>2.0.1.0</AssemblyVersion>
-        <SignAssembly>True</SignAssembly>
         <FileVersion>$(AssemlbyVersion)</FileVersion>
         <ApplicationIcon>barcode_detector.ico</ApplicationIcon>
         
@@ -34,17 +31,6 @@
         <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
         <PathMap>$(AppOutputBase)=InspiredCodes.BarcodeScanDetector</PathMap>
         
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <DebugType>full</DebugType>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Optimized'">
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <DefineConstants>TRACE</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>

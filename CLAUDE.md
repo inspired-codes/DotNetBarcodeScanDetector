@@ -24,7 +24,8 @@ dotnet test InspiredCodes.WPF.BarcodeScanDetector.Tests
 dotnet test InspiredCodes.WinForms.BarcodeScanDetector.Tests
 ```
 
-- The core and core-test projects define configurations `Debug;Optimized` (there is no `Release`).
+- All projects use the standard `Debug`/`Release` configurations with SDK defaults (no custom configuration groups). Assemblies are not strong-named.
+- A whole-solution build works on Linux with `dotnet build InspiredCodes.BarcodeScanDetector.slnx -p:EnableWindowsTargeting=true`. It currently gives 10 warnings, all CS8618 in the WPF test mock and the WinForms demo. Use `--no-incremental` when comparing warning counts, because an incremental build only reports warnings for projects it recompiled.
 - Core tests are slow by design: they use real `Thread.Sleep` / `Task.Delay` to wait out the 300 ms cooldown, so `SimulateFastInputTest` alone takes ~12 s, and timing-based flakiness on a loaded machine is a real possibility.
 - `GeneratePackageOnBuild` is on for the core and WPF projects, so every build emits a `.nupkg`. Version (`AssemblyVersion`/`FileVersion`/`Version`) is duplicated by hand in each csproj; keep them in sync.
 - `.editorconfig` enforces file-scoped namespaces and unused-using removal (IDE0005) as warnings.

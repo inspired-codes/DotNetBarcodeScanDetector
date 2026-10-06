@@ -6,19 +6,6 @@
         <Nullable>disable</Nullable>
         <LangVersion>14.0</LangVersion>
         <IsPackable>false</IsPackable>
-        <Configurations>Debug;Optimized</Configurations>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-        <DebugType>full</DebugType>
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Optimized'">
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <DefineConstants>TRACE</DefineConstants>
-        <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
     </PropertyGroup>
 
     <ItemGroup>

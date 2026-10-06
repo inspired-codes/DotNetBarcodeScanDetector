@@ -1,7 +1,5 @@
 <Solution>
-  <Project Path="InspiredCodes.BarcodeScanDetector.Tests/InspiredCodes.BarcodeScanDetector.Tests.csproj">
-    <BuildType Project="Debug" />
-  </Project>
+  <Project Path="InspiredCodes.BarcodeScanDetector.Tests/InspiredCodes.BarcodeScanDetector.Tests.csproj" />
   <Project Path="InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj" />
   <Project Path="InspiredCodes.WPF.BarcodeScanDetector.Tests/InspiredCodes.WPF.BarcodeScanDetector.Tests.csproj" />
   <Project Path="InspiredCodes.WPF.BarcodeScanDetector/InspiredCodes.WPF.BarcodeScanDetector.csproj" />

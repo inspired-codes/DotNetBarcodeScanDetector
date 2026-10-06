@@ -8,7 +8,6 @@
     <LangVersion>14.0</LangVersion>
 
     <AssemblyVersion>2.0.1.0</AssemblyVersion>
-    <SignAssembly>True</SignAssembly>
     <FileVersion>2.0.1.0</FileVersion>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Version>2.0.1</Version>
