@@ -99,10 +99,14 @@ Facts the plan relies on:
   - **Verification status:** all four Windows targets (`net48`, `net6.0-windows`, `net8.0-windows`, `net10.0-windows`) of both adapters, both test projects and both demos **compile** on Linux with `-p:EnableWindowsTargeting=true`, but these tests could not be executed there. **Run `dotnet test` on both test projects on Windows before relying on A7**, and confirm at least one of them fails without the `-=` line.
   - Limitation (unchanged until C2): the handlers forward to the **global** detector, so two registered windows share one state machine.
 
-### A8. `sender` parameter decision
+### A8. `sender` parameter decision — DONE (decision: honor it)
 * **Files:** `GenericScanDetector.cs`, `ScanDetector.cs`
 * **Actions:**
-  - `SimulateFastInput`'s `sender` is dead today. In A: mark the `object sender` facade overloads `[Obsolete]` or document that the value is ignored. In C2 the instance detector raises events with itself as `sender`.
+  - `SimulateFastInput`'s `sender` was dead (handlers always saw `null`). Decision: **honor it** rather than mark the overloads `[Obsolete]`. No external caller needed to be warned and the parameter now does what its name says.
+  - Implementation: a private `ProcessInput(string text, object? sender)` does the work; the public `ProcessInput(string text)` (real input) calls it with `null`. `SimulateFastInput` passes its `sender` with every character and with the closing newline, so the event raised by the scan that the simulation completes carries it. The event is still raised after the A6 lock is released. `OnBarcodeScannedEvent` takes the sender.
+  - Resulting rules (documented on the facade overloads): `SimulateBubbleFastInput(sender, …)` / `SimulateTunnelFastInput(sender, …)` → handlers see `sender`; the one-argument overloads and real input (the WPF/WinForms adapters) → `null`; a sender never sticks to a later scan.
+  - **Tests:** `SenderTests` (cooldown set to 0 for the tests to avoid sleeps). Mutation-checked: dropping the sender on the closing newline fails three of them.
+  - **For C2:** the instance detector raises events with itself as `sender`; what that means for the static facade (which today forwards the simulate-supplied object or `null`) is decided there. Do not leak the internal `GenericScanDetector` type through `sender`.
 
 ---
 

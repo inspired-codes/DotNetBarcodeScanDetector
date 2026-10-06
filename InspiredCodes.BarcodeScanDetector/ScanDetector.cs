@@ -29,6 +29,7 @@ public class ScanDetector
     {
         TextInputDetector.SimulateFastInput(null, barcode);
     }
+    /// <param name="sender">reported as the sender of the <see cref="BarcodeScanned"/> event this simulation raises (real input reports null)</param>
     public static void SimulateBubbleFastInput(object sender, string barcode)
     {
         TextInputDetector.SimulateFastInput(sender, barcode);
@@ -37,6 +38,7 @@ public class ScanDetector
     {
         PreviewTextInputDetector.SimulateFastInput(null, barcode);
     }
+    /// <param name="sender">reported as the sender of the <see cref="PreviewBarcodeScanned"/> event this simulation raises (real input reports null)</param>
     public static void SimulateTunnelFastInput(object sender, string barcode)
     {
         PreviewTextInputDetector.SimulateFastInput(sender, barcode);

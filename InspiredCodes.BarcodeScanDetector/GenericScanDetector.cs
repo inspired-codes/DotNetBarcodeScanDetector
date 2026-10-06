@@ -10,9 +10,9 @@ internal sealed class GenericScanDetector
 {
     public event EventHandler<BarcodeScannedEventArgs>? BarcodeScanned;
 
-    private void OnBarcodeScannedEvent(BarcodeScannedEventArgs args)
+    private void OnBarcodeScannedEvent(object? sender, BarcodeScannedEventArgs args)
     {
-        BarcodeScanned?.Invoke(null, args);
+        BarcodeScanned?.Invoke(sender, args);
     }
 
     /// <summary>
@@ -36,7 +36,7 @@ internal sealed class GenericScanDetector
     /// <summary>
     /// for many UI components, the calling thead must be STA
     /// </summary>
-    /// <param name="sender"></param>
+    /// <param name="sender">reported as the sender of the BarcodeScanned event this simulation raises</param>
     /// <param name="textInput"></param>
     /// <param name="thresholdDivider"></param>
     /// <exception cref="ArgumentNullException"></exception>
@@ -51,12 +51,18 @@ internal sealed class GenericScanDetector
         CheckNoCrOrLf(textInput);
 
         for (int i = 0; i < textInput.Length; i++)
-            ProcessInput(textInput[i].ToString());
+            ProcessInput(textInput[i].ToString(), sender);
 
         Task.Delay(ThresholdMillisec / thresholdDivider).Wait();
-        ProcessInput(NewLineN);
+        ProcessInput(NewLineN, sender);
     }
+    /// <summary>real input: the raised event has no sender</summary>
     public void ProcessInput(string text)
+    {
+        ProcessInput(text, null);
+    }
+    /// <param name="sender">reported as the sender of the BarcodeScanned event, if this input completes a scan</param>
+    private void ProcessInput(string text, object? sender)
     {
         BarcodeScannedEventArgs? scanned;
         lock (_sync)
@@ -66,7 +72,7 @@ internal sealed class GenericScanDetector
 
         // raised after the lock is released; the cooldown it started is already in place
         if (scanned != null)
-            OnBarcodeScannedEvent(scanned);
+            OnBarcodeScannedEvent(sender, scanned);
     }
     /// <returns>the completed scan to report, if this input completed one</returns>
     private BarcodeScannedEventArgs? ProcessInputLocked(string text)
