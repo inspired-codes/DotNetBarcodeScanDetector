@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace InspiredCodes.WPF.BarcodeScanDetector;
 
@@ -12,8 +13,12 @@ public class DetectorConfig
     public static readonly string NewLineRN = "\r\n";
     public static readonly string NewLineNR = "\n\r";
 
-    private static int _cooldownMillisec = 300;
-    private static int _maxBufferLength = 4096;
+    // The settings are read by whichever thread delivers input while another thread may be
+    // changing them: Interlocked keeps the 64-bit value from tearing on 32-bit processes,
+    // volatile makes a change visible to the reading thread.
+    private static long _thresholdTicks = 32 * TimeSpan.TicksPerMillisecond;
+    private static volatile int _cooldownMillisec = 300;
+    private static volatile int _maxBufferLength = 4096;
 
     /// <summary>
     /// the largest gap between two inputs that still counts as fast, in milliseconds (default 32)
@@ -29,7 +34,11 @@ public class DetectorConfig
             ThresholdTicks = value * TimeSpan.TicksPerMillisecond;
         }
     }
-    public static long ThresholdTicks { get; set; } = 32 * TimeSpan.TicksPerMillisecond;
+    public static long ThresholdTicks
+    {
+        get => Interlocked.Read(ref _thresholdTicks);
+        set => Interlocked.Exchange(ref _thresholdTicks, value);
+    }
 
     /// <summary>
     /// how long input is discarded after a scan or a buffer overflow, in milliseconds (default 300);

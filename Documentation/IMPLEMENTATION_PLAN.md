@@ -77,11 +77,16 @@ Facts the plan relies on:
   - **Tests:** `DetectorConfigLimitsTests` covers defaults, setters, validation, and behaviour at each of the four replaced sites. Mutation-checked: restoring any one hard-coded literal fails at least one test.
   - The BPMN cooldown annotation now says 300 ms / 4096 chars are the defaults, with the property names. (The task labels "start 300ms cooldown" and "> 4096" in the diagram still show the default numbers.)
 
-### A6. Thread safety
-* **Files:** `DetectorData.cs`, `GenericScanDetector.cs`
+### A6. Thread safety — DONE
+* **Files:** `GenericScanDetector.cs`, `DetectorConfig.cs`, `DetectorData.cs` (documentation only)
 * **Actions:**
-  - Synchronize `CooldownEndTicks` and `PreviousInput` (currently only the queue is locked). Prefer one lock owned by `GenericScanDetector` around the whole `ProcessInput`/`Reset` state transition rather than many fine-grained locks, and make sure `DetectorData`'s own lock use cannot invert lock order.
-  - **Raise `BarcodeScanned` outside the lock** (capture the text under the lock, release, then invoke), so handlers that call back into the detector or block cannot deadlock.
+  - **Measured before fixing:** with 4 threads sending `\r` at once after a buffered `ABC`, the unsynchronized detector corrupted the scan in 954–1,453 of 1,500 rounds on every run (duplicated characters such as `ABCC`, or `ABC` plus a spurious `C` event).
+  - One lock (`_sync`) owned by `GenericScanDetector` now covers the whole `ProcessInput` and `Reset` state transition: `Data` (queue, `PreviousInput`, `CooldownEndTicks`) and `_newlineComplement`. The clock is read inside the lock so timestamps follow processing order. Lock order is `_sync`, then `DetectorData`'s queue lock; the latter never takes `_sync`. `DetectorData` is documented as not thread-safe on its own beyond its queue operations.
+  - **`BarcodeScanned` is raised after the lock is released.** The internal methods return the completed scan instead of raising it; the cooldown started by A2 is already in place when the event fires. A handler can therefore block, call back into the detector, or wait on another thread's input without deadlocking.
+  - The A5 static settings: `ThresholdTicks` now uses `Interlocked.Read`/`Exchange` (a 64-bit value can tear in a 32-bit process, e.g. a default AnyCPU `net48` app); `CooldownMillisec` and `MaxBufferLength` are `volatile`. Not unit-testable (needs a 32-bit process); behaviour is covered by the existing config tests.
+  - **Consequence to document for consumers:** when input arrives from several threads, `BarcodeScanned` handlers run on whichever thread completed the scan and may run concurrently with input processing on other threads. With single-threaded input (the WPF/WinForms adapters) nothing changes.
+  - **Tests:** `ConcurrencyTests`: simultaneous newlines raise exactly one event (the red test above); the handler runs outside the lock; concurrent input plus `Reset()` does not throw. Mutation-checked: removing the lock fails the first, raising the event inside the lock fails the second.
+  - **Test-hygiene lesson:** the detectors are static, so a test that subscribes to `BarcodeScanned` and doesn't unsubscribe changes every later test (an early version of `HandlerRunsOutsideTheDetectorLock` made three unrelated tests fail only in a full run). Always unsubscribe in `finally`/`[TestCleanup]`. `ScanDetectorTests` (original code) still leaves handlers subscribed; they only record into old queues, but tidy this up in B3.
 
 ### A7. Idempotent UI registration
 * **Files:** `WpfScanDetectorExtensions.cs`, `WinFormsScanDetectorExtensions.cs`

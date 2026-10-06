@@ -3,7 +3,13 @@ using System.Collections.Generic;
 
 namespace InspiredCodes.WPF.BarcodeScanDetector;
 
-public class DetectorData 
+/// <summary>
+/// The detector's state. Only the queue operations are synchronized here;
+/// <see cref="CooldownEndTicks"/> and <see cref="PreviousInput"/> are plain properties.
+/// An instance is private to one detector, which serializes every access with its own
+/// lock (taken before the queue lock below, never after it).
+/// </summary>
+public class DetectorData
 {
 
     private readonly object LockQueue = new object();

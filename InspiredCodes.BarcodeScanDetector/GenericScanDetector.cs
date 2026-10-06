@@ -15,12 +15,21 @@ internal sealed class GenericScanDetector
         BarcodeScanned?.Invoke(null, args);
     }
 
-    private DetectorData Data = new DetectorData();
+    /// <summary>
+    /// Guards <see cref="Data"/> and <see cref="_newlineComplement"/>: input may arrive from
+    /// several threads, and every state transition must see and leave consistent state.
+    /// Never held while raising <see cref="BarcodeScanned"/>, so a handler may block or call
+    /// back into the detector without deadlocking. Lock order: this lock, then the queue
+    /// lock inside <see cref="DetectorData"/>; the latter never takes this one.
+    /// </summary>
+    private readonly object _sync = new object();
+
+    private readonly DetectorData Data = new DetectorData();
 
     /// <summary>
     /// The other half of a CRLF/LFCR pair: set when a scan ends with a lone CR or LF,
     /// and valid only for the very next input. That input is discarded during the
-    /// cooldown without extending it.
+    /// cooldown without extending it. Guarded by <see cref="_sync"/>.
     /// </summary>
     private string? _newlineComplement;
 
@@ -49,6 +58,20 @@ internal sealed class GenericScanDetector
     }
     public void ProcessInput(string text)
     {
+        BarcodeScannedEventArgs? scanned;
+        lock (_sync)
+        {
+            scanned = ProcessInputLocked(text);
+        }
+
+        // raised after the lock is released; the cooldown it started is already in place
+        if (scanned != null)
+            OnBarcodeScannedEvent(scanned);
+    }
+    /// <returns>the completed scan to report, if this input completed one</returns>
+    private BarcodeScannedEventArgs? ProcessInputLocked(string text)
+    {
+        // read the clock inside the lock so timestamps follow the order inputs are processed in
         long nowTicks = DateTime.Now.Ticks;
         long delta = nowTicks - Data.PreviousInput.TimestampTicks;
         TextInputEventArgs textInputArgs = new TextInputEventArgs(text, nowTicks, delta);
@@ -70,7 +93,7 @@ internal sealed class GenericScanDetector
             // Discard input and keep the real timestamp so we can accurately measure the next delta
             Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks, delta);
             Data.ClearQueue();
-            return;
+            return null;
         }
 
         // slow
@@ -78,29 +101,27 @@ internal sealed class GenericScanDetector
         {
             Data.PreviousInput = textInputArgs;
             Data.ClearQueue();
-            return;
+            return null;
         }
 
         // fast
-        HandleFastInput(textInputArgs);
+        return HandleFastInput(textInputArgs);
     }
-    private void HandleFastInput(TextInputEventArgs textInputArgs)
+    private BarcodeScannedEventArgs? HandleFastInput(TextInputEventArgs textInputArgs)
     {
         if (IsLineFeedOrCarriageReturn(textInputArgs.Text))
-        {
-            HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks, textInputArgs.DeltaToPreviousTicks));
-            return;
-        }
+            return HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks, textInputArgs.DeltaToPreviousTicks));
 
         Data.Enqueue(Data.PreviousInput);
         Data.PreviousInput = textInputArgs;
+        return null;
     }
-    private void HandleReturnInput(ReturnInputArgs textInputArgs)
+    private BarcodeScannedEventArgs? HandleReturnInput(ReturnInputArgs textInputArgs)
     {
         if (IsLineFeedOrCarriageReturn(Data.PreviousInput.Text))
         {
             Data.PreviousInput = textInputArgs;
-            return;
+            return null;
         }
 
         Data.Enqueue(Data.PreviousInput);
@@ -115,13 +136,13 @@ internal sealed class GenericScanDetector
         // overflow already started the cooldown), or the newline came with no text
         // before it. Neither is a scan, so no event and no scan-completed cooldown.
         if (sb.Length == 0)
-            return;
+            return null;
 
-        // start the cooldown before raising the event, so input fed from a handler
-        // already runs into it
+        // start the cooldown before the event is raised, so input fed from a handler
+        // (or another thread) already runs into it
         Data.CooldownEndTicks = DateTime.Now.Ticks + CooldownTicks;
         _newlineComplement = NewlineComplement(textInputArgs.Text);
-        OnBarcodeScannedEvent(new BarcodeScannedEventArgs(sb.ToString()));
+        return new BarcodeScannedEventArgs(sb.ToString());
     }
     private static string? NewlineComplement(string newline)
     {
@@ -150,9 +171,12 @@ internal sealed class GenericScanDetector
     //}
     public void Reset()
     {
-        Data.ClearQueue();
-        Data.CooldownEndTicks = 0;
-        _newlineComplement = null;
-        Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks, 0);
+        lock (_sync)
+        {
+            Data.ClearQueue();
+            Data.CooldownEndTicks = 0;
+            _newlineComplement = null;
+            Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks, 0);
+        }
     }
 }
