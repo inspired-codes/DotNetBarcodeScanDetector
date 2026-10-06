@@ -58,12 +58,13 @@ Facts the plan relies on:
   - **Tests:** `BufferBoundaryTests`: 4096 → one event with all characters; 4097 and 4098 → no event, the cooldown discards the next scan and then expires; lone newline → no event, no cooldown. (`BufferLimitTest` with 4100 chars stays as it is.)
   - The BPMN cooldown annotation was updated (D4, A3 part).
 
-### A4. Correct timestamp/delta argument usage
+### A4. Correct timestamp/delta argument usage — DONE
 * **Files:** `TextInputArgs.cs`, `GenericScanDetector.cs`, `DetectorData.cs`
 * **Actions:**
-  - Add a `TextInputEventArgs(string text, long timestampTicks, long deltaToPreviousTicks)` constructor so callers state both values explicitly and `DateTime.Now` is not re-read implicitly.
-  - Update all four call sites listed in *Verified Baseline* (`GenericScanDetector.cs:58`, `:78`, `:125`, `DetectorData.cs:16`). At `:78` pass `DeltaToPreviousTicks`.
-  - Treat this as cleanup, not a behaviour fix.
+  - Added `TextInputEventArgs(string text, long timestampTicks, long deltaToPreviousTicks)` and the matching `ReturnInputArgs(text, timestampTicks, deltaToPreviousTicks)` (which still validates that the text is a newline), so callers state both values explicitly. `TimestampTicks` is now assigned in the constructor instead of a property initializer. The existing two-argument constructors remain (additive change, no break) and chain to the new ones; their doc comment says the argument is a delta, not a timestamp. External callers who pass a timestamp there still compile, which cannot be prevented without a breaking change (C3).
+  - Updated every construction site: `GenericScanDetector.ProcessInput` (now passes its own `nowTicks`, so one clock read is used for both the delta and the stored timestamp), the cooldown branch (placeholder keeps the real `delta`), `HandleFastInput` (passes `DeltaToPreviousTicks`, not `TimestampTicks`, into the `ReturnInputArgs`), `Reset()`, and the initial `DetectorData.PreviousInput` (delta `0`).
+  - Observable effect, tested: the initial `DetectorData.PreviousInput.DeltaToPreviousTicks` is now `0` instead of the creation timestamp. Detection behaviour is unchanged.
+  - **Tests:** `TextInputArgsTests`.
 
 ### A5. Externalize timing and buffer limits
 * **Files:** `DetectorConfig.cs`, `DetectorData.cs`, `GenericScanDetector.cs`

@@ -51,7 +51,7 @@ internal sealed class GenericScanDetector
     {
         long nowTicks = DateTime.Now.Ticks;
         long delta = nowTicks - Data.PreviousInput.TimestampTicks;
-        TextInputEventArgs textInputArgs = new TextInputEventArgs(text, delta);
+        TextInputEventArgs textInputArgs = new TextInputEventArgs(text, nowTicks, delta);
 
         // only the input right after a scan's newline can complete a CRLF/LFCR pair
         string? newlineComplement = _newlineComplement;
@@ -68,7 +68,7 @@ internal sealed class GenericScanDetector
             }
 
             // Discard input and keep the real timestamp so we can accurately measure the next delta
-            Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks);
+            Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks, delta);
             Data.ClearQueue();
             return;
         }
@@ -88,7 +88,7 @@ internal sealed class GenericScanDetector
     {
         if (IsLineFeedOrCarriageReturn(textInputArgs.Text))
         {
-            HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks));
+            HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks, textInputArgs.DeltaToPreviousTicks));
             return;
         }
 
@@ -153,6 +153,6 @@ internal sealed class GenericScanDetector
         Data.ClearQueue();
         Data.CooldownEndTicks = 0;
         _newlineComplement = null;
-        Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks);
+        Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks, 0);
     }
 }
