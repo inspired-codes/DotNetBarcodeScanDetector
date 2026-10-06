@@ -1,19 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net48;net6.0-windows;net8.0-windows;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks>net472;net8.0-windows</TargetFrameworks>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <LangVersion>14.0</LangVersion>
+
     <AssemblyVersion>2.0.1.0</AssemblyVersion>
     <FileVersion>2.0.1.0</FileVersion>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Version>2.0.1</Version>
+    <Authors>Peter Metz (pmetz@inspired.codes), Steven Lee</Authors>
+    <Company>Inspired Codes</Company>
+    <Product>WinForms Barcode Scan Detector Extensions</Product>
+    <Description>Windows Forms extensions for the Barcode Scan Detector</Description>
+    <Copyright>Inspired Codes 2026</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>barcode_detector.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\InspiredCodes.BarcodeScanDetector\InspiredCodes.BarcodeScanDetector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\InspiredCodes.BarcodeScanDetector\barcode_detector.png">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

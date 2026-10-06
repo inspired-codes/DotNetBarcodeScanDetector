@@ -8,9 +8,9 @@
 
 | | |
 |---|---|
-| **Done** | Phase 0 (2.x hardening), Phase 1 (xUnit, no signing, Debug/Release, csproj fixes), Phase 2 (v3 engine `ScanDetectorEngine`, options, terminators, timestamps; 97 core tests, mutation-checked) |
-| **Next** | Phase 3: WPF & WinForms adapters (TFMs `net472; net8.0-windows`, `UIElement` + `handledEventsToo`, per-engine registration, WinForms message filter and package) |
-| **Not yet verified (needs Windows)** | core tests on `net48`; the WPF and WinForms test projects (written in A7, never run); both demos. Everything else was built and tested on Linux (`net10.0`; Windows projects compile with `-p:EnableWindowsTargeting=true`). |
+| **Done** | Phase 0 (2.x hardening), Phase 1 (xUnit, no signing, Debug/Release, csproj fixes), Phase 2 (v3 engine `ScanDetectorEngine`, options, terminators, timestamps; 97 core tests, mutation-checked), Phase 3 (WPF & WinForms adapters: `net472; net8.0-windows`, per-engine registration, `handledEventsToo`, WinForms message filter and package) |
+| **Next** | Run the Windows-only tests (below) before building on Phase 3; then Phase 4 (WinUI 3) or Phase 5 (Blazor WASM PWA), which are independent of each other, and Phase 6 (release) |
+| **Not yet verified (needs Windows)** | core tests on `net48`; the WPF tests (10) and WinForms tests (11) of Phase 3, never run; both demos. On Linux the adapters' real source was exercised against minimal stand-in framework types (20 checks, see 3.4), and everything else was built and tested (`net10.0`; Windows projects compile with `-p:EnableWindowsTargeting=true`). |
 | **Open decisions** | OD-7 (package readme) and OD-8 (authors) for Phase 6; OD-9 (separate 2.0.2) only if needed |
 
 ## Decisions Already Made
@@ -128,7 +128,7 @@ These rules were implemented and tested in the 2.x engine (Phase 0) and hold for
 | R6 | During the cooldown, input is discarded; fast input extends the cooldown by the full `Cooldown`; slow input does not. `Cooldown = 0` disables it. The cooldown ends exactly `Cooldown` after the scan; a gap of exactly `InterKeyThreshold` still counts as fast. | A5 | `CooldownTests`, `TypingTests` |
 | R7 | Options validation: threshold and cooldown must not be negative (0 allowed); `MaxLength` ≥ 1; invalid values throw `ArgumentOutOfRangeException`; `Terminators` must select Enter, Tab or both. | A5 | `OptionsTests` |
 | R8 | Thread-safe: one lock covers every state transition (`ProcessInput`, `ProcessBatch`, `Reset`); `BarcodeScanned` is raised **after** the lock is released, so handlers may block or call back in. `ProcessBatch` collects completed scans under the lock and raises them afterwards, in order. | A6 | `ConcurrencyTests` |
-| R9 | Registering an adapter twice forwards each input once; one unregister detaches completely. | A7 | WPF/WinForms test projects (never run, see Phase 0) |
+| R9 | Registering an element/control twice with the same engine forwards each input once; one unregister detaches completely; other engines on the same element are unaffected. | A7, Phase 3 | `WpfScanDetectorExtensionsTests`, `WinFormsScanDetectorExtensionsTests` (never run, need Windows; see 3.4) |
 | R10 | The event `sender` is the detector instance (replaces A8, whose `Simulate…(sender, …)` overloads are dropped by the v3 facade; record this in the migration notes). | A8 → v3 | `EventTests`, `FacadeTests` |
 
 ---
@@ -244,25 +244,28 @@ Decisions: OD-1 to OD-5 as recorded in *Open Decisions*.
 
 ---
 
-## Phase 3: WPF & WinForms Adapters
+## Phase 3: WPF & WinForms Adapters — DONE (Windows test runs pending)
 
-### 3.1 Target frameworks
-* Adapters `net472; net8.0-windows`; their tests `net48; net10.0-windows` (from today's `net48; net6.0/8.0/10.0-windows`).
+### 3.1 Target frameworks — DONE
+* Adapters `net472; net8.0-windows`; their tests `net48; net10.0-windows` (were `net48; net6.0/8.0/10.0-windows`). The `net472` reference assemblies restored from NuGet; all targets compile on Linux with `-p:EnableWindowsTargeting=true`.
 
-### 3.2 WPF (`InspiredCodes.WPF.BarcodeScanDetector`)
-* Register with `AddHandler(TextCompositionManager.TextInputEvent, handler, handledEventsToo: true)` (and the preview event likewise) to catch input that focused controls mark as handled.
-* **Breaking:** `AddHandler(…, handledEventsToo)` exists on `UIElement`, not on `IInputElement`, so the extension target changes from `IInputElement` to `UIElement`. The current `MockInputElement` tests no longer apply; tests need a real `UIElement`, created on an STA thread.
-* Extension methods take an optional detector instance (default `ScanDetector.Default` / `.Preview`).
-* Idempotency via a `ConditionalWeakTable` of (element, detector) → handler. Today's detach-before-attach trick (A7) only works because the handler is one static method; per-detector handlers are closures, and a new closure never equals the attached one.
+### 3.2 WPF (`InspiredCodes.WPF.BarcodeScanDetector`) — DONE
+* `RegisterTextInput` / `RegisterPreviewTextInput` (and `UnRegister…`) now extend **`UIElement`** (breaking; was `IInputElement`) and take an optional `ScanDetectorEngine` (default `ScanDetector.Default` / `ScanDetector.Preview`).
+* They use `AddHandler(TextCompositionManager.TextInputEvent / PreviewTextInputEvent, handler, handledEventsToo: true)`. **Behaviour change:** the bubbling path now also sees text that a focused control (e.g. a `TextBox`) marks as handled; before, a window-level `TextInput` handler missed it.
+* Idempotency: a `ConditionalWeakTable<UIElement, Dictionary<(RoutedEvent, ScanDetectorEngine), handler>>` remembers each registration; registering the same element, event and engine again is a no-op, unregistering removes exactly that handler. Different engines on one element are independent.
+* Tests: `MockInputElement` removed. 10 tests on real `UIElement`s (`Border`), each run on its own STA thread, raising real routed `TextInput`/`PreviewTextInput` events: idempotency, unregister, re-register, two engines, unregister one engine, preview vs. bubble, default engines, and input marked handled by a child (which also asserts that an ordinary handler on the parent does *not* see it, so the test can't pass for the wrong reason).
 
-### 3.3 WinForms (`InspiredCodes.WinForms.BarcodeScanDetector`)
-* Add `BarcodeScanMessageFilter : IMessageFilter` (`WM_CHAR` at application level): it sees typed characters wherever the focus is, without `KeyPreview`.
-* `RegisterKeyPress` stays and stays idempotent (R9); with a detector parameter it needs the same `ConditionalWeakTable` approach as WPF. Its doc keeps the `KeyPreview = true` note.
-* Package metadata (description, license, authors, icon) and `GeneratePackageOnBuild=true`.
+### 3.3 WinForms (`InspiredCodes.WinForms.BarcodeScanDetector`) — DONE
+* `RegisterKeyPress` / `UnRegisterKeyPress` take an optional engine (default `ScanDetector.Default`); idempotency with the same `ConditionalWeakTable` approach (keyed by control and engine). The `KeyPreview = true` note stays.
+* New `BarcodeScanMessageFilter : IMessageFilter`: feeds every `WM_CHAR` of the UI thread's message loop to its engine, whichever control has the focus, and always returns `false` (never swallows a message). Installed with `Application.AddMessageFilter`. Documented: don't combine it with `RegisterKeyPress` on the same engine (every key would arrive twice).
+* Package: `GeneratePackageOnBuild=true`, description, license, authors (same as the WPF package, OD-8 still open), product, copyright and the core's icon. The built `.nupkg` contains `net472` and `net8.0-windows` libraries, the icon and a dependency on the core package.
+* Tests: 11, on an STA thread where a control is involved: the same idempotency/engine cases as WPF via a `Control` subclass that raises `KeyPress`, plus the message filter fed real `Message`s (`WM_CHAR` → scan, nothing swallowed; `WM_KEYDOWN` ignored; default engine).
 
-### 3.4 Demos and verification
-* Update `WpfDemo` and `WinFormsDemo` to the v3 API.
-* Compile-check on Linux (`-p:EnableWindowsTargeting=true`); run the tests and demos on Windows.
+### 3.4 Demos and verification — DONE (on Linux; Windows pending)
+* The demos needed no change: they already use the v3 facade, and `this.RegisterTextInput()` on a `Window` / `this.RegisterKeyPress()` on a `Form` still compile against the new signatures.
+* The whole solution builds in Debug and Release (full rebuild, all targets): 0 errors, **2 warnings** (CS8618 in the WinForms demo; the 8 in the removed WPF mock are gone). Core tests 97/97.
+* **Extra evidence, since the Windows tests can't run here:** the real adapter source files were compiled on Linux against minimal stand-ins for the framework types they touch (`UIElement` with `AddHandler`/`RemoveHandler`, `Control` with `KeyPress`, `Message`, `IMessageFilter`) and exercised: 20 checks covering registration, idempotency, unregister, multiple engines, preview vs. bubble, `handledEventsToo` being requested, default engines, null arguments and the message filter. All pass; removing the idempotency guard makes them fail. This checks our bookkeeping, **not** WPF's routing or WinForms' message loop.
+* **Still to do on Windows:** `dotnet test` on `InspiredCodes.WPF.BarcodeScanDetector.Tests` and `InspiredCodes.WinForms.BarcodeScanDetector.Tests`; run both demos and scan into a focused `TextBox` (WPF) and with the message filter installed (WinForms).
 
 ---
 
@@ -299,10 +302,11 @@ Decisions: OD-1 to OD-5 as recorded in *Open Decisions*.
 
 ### 6.2 Versioning and packaging
 * Bump `AssemblyVersion`/`FileVersion`/`Version` to 3.0.0 in **every** csproj (they are duplicated by hand).
+* The WPF package has no icon (the core and, since Phase 3, the WinForms package have one); add it for consistency.
 * Consistent package metadata per the decisions above (OD-8).
 
 ### 6.3 Documentation
-* Migration notes 2.x → 3.0: namespace move; `DetectorConfig` statics → per-engine `ScanDetectorOptions` (the facade's engines always use the defaults; for other options create a `ScanDetectorEngine`); `ScanDetector` facade changes (`Default`/`Preview` engines, dropped `Simulate…(sender, …)` overloads, the event sender is the engine); `BarcodeScannedEventArgs.TimestampTicks` (wall clock) → `Timestamp` (`TimeSpan`, engine time base); `Simulate…` no longer blocks the calling thread; `ProcessInput(null)` throws; an engine rejects mixing its own clock with caller timestamps; removed public types (`DetectorConfig`, `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs`); WPF extension target `IInputElement` → `UIElement`; dropped TFMs (`net6.0`, below `net472`); no strong name; no `Optimized` configuration.
+* Migration notes 2.x → 3.0: namespace move; `DetectorConfig` statics → per-engine `ScanDetectorOptions` (the facade's engines always use the defaults; for other options create a `ScanDetectorEngine`); `ScanDetector` facade changes (`Default`/`Preview` engines, dropped `Simulate…(sender, …)` overloads, the event sender is the engine); `BarcodeScannedEventArgs.TimestampTicks` (wall clock) → `Timestamp` (`TimeSpan`, engine time base); `Simulate…` no longer blocks the calling thread; `ProcessInput(null)` throws; an engine rejects mixing its own clock with caller timestamps; removed public types (`DetectorConfig`, `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs`); WPF extension target `IInputElement` → `UIElement`, and its bubbling path now also sees input that a focused control marks as handled; adapters take an optional engine; new `BarcodeScanMessageFilter` for WinForms; dropped TFMs (`net6.0`, below `net472`); no strong name; no `Optimized` configuration.
 * Root `README.md`: replace the absolute `file:///c:/Users/Peter/...` links with repository-relative ones; document all four platforms.
 * `InspiredCodes.BarcodeScanDetector/README.md`: remove the nonexistent `ScanDetector.Register(this)`, the wrong type name `BarcodeScannedArgs`, the stale "needs PresentationCore" claim, and the internal Steelcase feed/push/delete commands and `@since … @steelcase.com` line.
 * State everywhere that the detector **observes** input and never suppresses it.
