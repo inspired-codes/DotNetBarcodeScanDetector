@@ -198,9 +198,11 @@ Goal: the toolchain decisions are in place and the **current** engine's 78 core 
 * Effective changes *(verified with `-getProperty`)*: `Release` is unchanged (it already got the SDK defaults); `Debug` now produces a `portable` PDB instead of `full`; the `Optimized` configuration is gone, and with it the `CheckForOverflowUnderflow` the core tests had only there.
 * Verified: the whole solution (Windows projects via `-p:EnableWindowsTargeting=true`) builds in `Debug` and `Release` with 0 errors and the same 10 pre-existing CS8618 warnings; the core tests pass (78/78) in both; a `Release` solution build now builds the core tests as `Release`.
 
-### 1.4 Core csproj fixes
-* Fix `<FileVersion>$(AssemlbyVersion)</FileVersion>` → `$(AssemblyVersion)` (cosmetic: the SDK already falls back to `2.0.1.0` *(verified)*).
-* Rewrite the stale `PackageReleaseNotes` ("removed netstandard, … dependency to WPF").
+### 1.4 Core csproj fixes — DONE
+* Fixed `<FileVersion>$(AssemlbyVersion)</FileVersion>` → `$(AssemblyVersion)`. Cosmetic, as expected: the evaluated `FileVersion` is now `2.0.1.0` instead of empty, and the generated `AssemblyFileVersion` attribute stays `2.0.1.0` *(verified)*.
+* Rewrote the stale `PackageReleaseNotes` ("removed netstandard, … dependency to WPF") to describe the package as it is: no UI dependencies, `netstandard2.0`/`netstandard2.1`, WPF and WinForms integration in separate adapter projects. It deliberately lists no changes, because the version is still 2.0.1; the change list belongs in the 3.0.0 notes (6.2/6.3). Verified in the built `.nupkg`'s nuspec.
+
+**Phase 1 is complete** apart from running the core tests' `net48` target on Windows (see 1.1).
 
 ---
 
