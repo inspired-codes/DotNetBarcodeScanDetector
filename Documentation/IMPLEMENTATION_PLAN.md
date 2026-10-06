@@ -1,224 +1,314 @@
-# Implementation Plan: Barcode Scan Detector Refactoring & Hardening
+# Implementation Plan: Barcode Scan Detector v3.0 (Multi-Platform)
 
-> **Revision 2 (2026-10-06).** Revised after validating revision 1 against the code (see [Revision notes](#revision-notes)). Facts marked *(verified)* were reproduced with a probe project or build, not just read from the code.
+> **Revision 4 (2026-10-06).** Merges the hardening plan (revision 2) and the multi-platform plan (revision 3) into one. **Where they conflict, the multi-platform plan wins.** The hardening plan's completed work (Phase 0) is kept as a behaviour contract the v3 engine must preserve; its open phases B–D are folded into the phases below or marked superseded. Both source plans remain in git history (`b0d282c`…`370b961` and `aa842b0`).
+>
+> Facts marked *(verified)* were reproduced with a build, test or probe program, not just read from the code.
 
-## Overview & Objectives
+## Decisions Already Made
 
-Step-by-step remediation of the defects, architectural shortcomings and documentation discrepancies found in **BarcodeScanDetector**, split into releases by risk:
+From the multi-platform plan (authoritative):
 
-| Phase | Theme | Release | Breaking? |
+- **TFM floors:** .NET Framework `4.7.2+` and .NET `8.0+`. Older TFMs are explicitly excluded.
+- **Core assets:** `netstandard2.0` (consumed by .NET Framework 4.7.2+) and `netstandard2.1` (consumed by .NET 8.0+).
+- **Test framework:** 100% **xUnit** across all test projects.
+- **Signing:** `SignAssembly=false` in all projects (strong-naming removed).
+- **Build configurations:** standard `Debug` and `Release` (the custom `Optimized` configuration is removed).
+- **Blazor scope:** **Blazor WebAssembly PWA**.
+- **Timing:** the core engine uses monotonic `Stopwatch.GetTimestamp()`; Blazor uses the high-resolution JS `event.timeStamp`, batched to C#.
+- **Release:** the target is **v3.0.0** (breaking).
+
+From the hardening work (already implemented, see Phase 0):
+
+- Only a **completed** scan raises `BarcodeScanned` and starts the scan-completed cooldown.
+- The detector is **thread-safe**: one lock per detector; events are raised **after** the lock is released.
+
+## Open Decisions
+
+| ID | Decision | Blocks | Recommendation |
 |---|---|---|---|
-| A | Logic, concurrency and registration fixes | 2.0.x | No |
-| B | Deterministic time + test suite modernization | 2.0.x | No (public `TimestampTicks` stays wall-clock) |
-| C | Namespace move, instantiable detectors, API surface | **3.0.0** | **Yes** |
-| D | Packaging, documentation, BPMN | with A/B/C as noted | No |
-
-Phases A and B can ship independently of C. Do not mix C into an A/B release.
-
-## Verified Baseline
-
-Facts the plan relies on:
-
-* `DetectorConfig.NewLineRN` is `"\n\r"`; `CheckNoCrOrLf` allocates a string per character.
-* After a fast `\r`, a fast `\n` moves the cooldown end by only the CR→LF gap (~8 ms measured), **not** to a doubled 600 ms *(verified)*. The BPMN annotation says "Extends on fast inputs during cooldown", which the code matches.
-* A scan of exactly **4097** characters raises `BarcodeScanned` with an **empty string**; 4096 chars scan correctly and 4098 chars raise nothing *(verified)*. Cause: `HandleReturnInput` enqueues the previous char, the queue overflows and is cleared (cooldown set in `DetectorData.Enqueue`), and the event is still raised with the empty result.
-* `GenericScanDetector.SimulateFastInput(object? sender, …)` ignores `sender`; handlers always receive `sender == null` *(verified)*.
-* `Environment.TickCount64` does **not** exist on `netstandard2.0` or `netstandard2.1` (CS0117) *(verified)*. `Stopwatch.GetTimestamp()` does, but its tick unit is `Stopwatch.Frequency`, not 100 ns.
-* `TextInputEventArgs(string text, long deltaToPreviousTicks)` takes a *delta*, but is called with a *timestamp* at `GenericScanDetector.cs:58` and `:125` and `DetectorData.cs:16`, and `GenericScanDetector.cs:78` passes `TimestampTicks` into `ReturnInputArgs`. It only works because `TimestampTicks` is set from `DateTime.Now` at construction. Nothing reads `ReturnInputArgs.DeltaToPreviousTicks`, so the `:78` bug has no observable effect.
-* The `$(AssemlbyVersion)` typo in the core csproj is harmless: the SDK falls back and generates `FileVersion` `2.0.1.0` *(verified)*.
-* The core csproj packs the **root** `README.md` (`..\README.md`), not `InspiredCodes.BarcodeScanDetector/README.md`.
-* Only core library + core tests build and run on Linux/macOS. WPF, WinForms, their tests and the demos need Windows.
+| **OD-1** | **Name of the instance class.** `BarcodeScanDetector` inside namespace `InspiredCodes.BarcodeScanDetector` fails to compile with **CS0118** ("is a namespace but is used like a type") in the adapters (`InspiredCodes.WPF.BarcodeScanDetector`, `InspiredCodes.WinForms.…`, …) and in any consumer code under an `InspiredCodes.*` namespace *(verified with a scratch build)*. It compiles in `InspiredCodes.BarcodeScanDetector.Tests` and in unrelated namespaces. | Phase 2 | Rename the class (e.g. `KeystrokeScanDetector`, `ScanDetectorEngine`). The alternative, keeping the name and aliasing it in every adapter, pushes the same problem onto consumers. |
+| **OD-2** | **Tab terminator semantics** (`ScanTerminators.Enter` / `Tab`). Undefined: is it a flags enum (Enter *and* Tab)? Does a Tab after CR/LF complete a pair the way R2 does for CR/LF? Does a lone Tab with nothing buffered behave like a lone newline (R4)? | Phase 2 | Flags enum, default `Enter`; Tab follows R4; only CR/LF form pairs (R2). |
+| **OD-3** | **Time bases.** `ProcessInput(text)` uses `Stopwatch`; `ProcessInput(text, timestamp)` and `ProcessBatch` use the caller's clock (JS `event.timeStamp` is milliseconds since page load). | Phase 2 | One detector instance must never mix time bases (document it; optionally throw when it detects a mix). All cooldown arithmetic uses the input's timestamp; no second clock read (the current engine reads the clock again to start cooldowns). A timestamp earlier than the previous one is treated as delta 0. |
+| **OD-4** | **`ScanDetectorOptions` lifetime.** It is a mutable class passed to the constructor. Does the detector see later changes? | Phase 2 | Snapshot (copy and validate) at construction; a running detector never sees half-applied changes, which matches the A6 thread-safety guarantees. |
+| **OD-5** | **`BarcodeScannedEventArgs` timestamp.** Today `TimestampTicks` is wall-clock `DateTime.Now`. v3 has detector-timeline `TimeSpan` timestamps. | Phase 2 | Expose the completion timestamp as `TimeSpan` in the detector's time base; drop `TimestampTicks`. |
+| **OD-6** | **xUnit version.** The existing WPF/WinForms tests use xunit 2.7.0. xUnit 2 has no runtime skip (`Assert.Inconclusive` is used by `CooldownNewlineTests`); xUnit v3 has `Assert.Skip`. | Phase 1 | Stay on xUnit 2 (latest 2.x) in all three projects; the timing guards that need a runtime skip disappear in Phase 2, when tests use explicit timestamps. |
+| **OD-7** | **Package readme.** The core csproj packs the **root** `README.md`, not `InspiredCodes.BarcodeScanDetector/README.md`. | Phase 6 | Give each package its own short readme, packed from its project folder. |
+| **OD-8** | **Authors metadata.** The multi-platform plan sets `Peter Metz (pmetz@inspired.codes)` everywhere; the core and WPF csproj currently say `Peter Metz (pmetz@inspired.codes), Steven Lee`, and the README credits Steven Lee as contributor. | Phase 6 | Confirm whether Steven Lee stays in `Authors`. |
+| **OD-9** | **Separate 2.0.2 release** of the Phase 0 fixes before 3.0.0. | — | Not needed under the multi-platform priority: Phase 0 ships as part of 3.0.0. Decide only if 2.x users need the fixes earlier. |
 
 ---
 
-## Phase A: Logic, Concurrency & Registration Fixes (non-breaking)
+## Target Architecture
 
-### A1. Newline constants and character validation
-* **File:** `InspiredCodes.BarcodeScanDetector/DetectorConfig.cs`
-* **Actions:**
-  - Change `NewLineRN` from `"\n\r"` to `"\r\n"`; keep recognising `"\n\r"` as a delimiter in `IsLineFeedOrCarriageReturn`.
-  - Rewrite `CheckNoCrOrLf` to compare characters directly (`c == '\r' || c == '\n'`) with no per-character string allocation.
+### Target Framework Matrix
 
-### A2. CRLF handling and cooldown ordering (BPMN-aligned) — DONE
-* **File:** `InspiredCodes.BarcodeScanDetector/GenericScanDetector.cs`
-* **Actions:**
-  - In `HandleReturnInput`, set `CooldownEndTicks` **before** raising `OnBarcodeScannedEvent` so a handler that synchronously feeds input sees an active cooldown (previously set after the event).
-  - During cooldown, swallow **only** the immediate complement of the newline that ended the scan (`\n` after `\r`, or `\r` after `\n`) when it arrives within the threshold, **without** extending the cooldown. Every other fast input during cooldown still extends it.
-  - **Implementation:** the "scan ended with newline X" marker is a private `_newlineComplement` field on `GenericScanDetector`, not stored in `PreviousInput` (the cooldown branch overwrites that with an empty-text args). It is set when a scan completes, consumed and cleared by the very next `ProcessInput` call whether or not that call is in cooldown, and cleared by `Reset()`. A6 must put this field under the same lock as the rest of the state.
-  - **Behaviour change to note:** the 300 ms cooldown is now measured from the moment the scan completes, not from when the `BarcodeScanned` handler returns, so a slow handler no longer pushes the cooldown end later.
-  - The BPMN annotation was updated in the same change (D4, A2 part). The gateway diagram has no separate cooldown branch, so only the annotation text changed. Do not describe the old behaviour as "doubling the cooldown": the real effect was a few milliseconds of extra cooldown.
-  - **Tests:** `CooldownNewlineTests` (wall-clock, threshold widened to 150 ms in the tests). Replace its sleeps with the injected clock in B1/B3.
+| Project | Target Frameworks | Scope | Currently |
+|---|---|---|---|
+| `InspiredCodes.BarcodeScanDetector` | `netstandard2.0; netstandard2.1` | Core state machine | same |
+| `InspiredCodes.WPF.BarcodeScanDetector` | `net472; net8.0-windows` | WPF extension | `net48; net6.0/8.0/10.0-windows` |
+| `InspiredCodes.WinForms.BarcodeScanDetector` | `net472; net8.0-windows` | WinForms extension | `net48; net6.0/8.0/10.0-windows` |
+| `InspiredCodes.WinUI.BarcodeScanDetector` | `net8.0-windows10.0.19041.0` | WinUI 3 extension | new |
+| `InspiredCodes.Blazor.BarcodeScanDetector` | `net8.0` | Blazor WASM PWA extension (RCL) | new |
+| `InspiredCodes.BarcodeScanDetector.Tests` | `net48; net10.0` | Core tests (xUnit) | `net6.0`, MSTest |
+| `InspiredCodes.WPF.BarcodeScanDetector.Tests` | `net48; net10.0-windows` | WPF tests (xUnit) | `net48; net6.0/8.0/10.0-windows` |
+| `InspiredCodes.WinForms.BarcodeScanDetector.Tests` | `net48; net10.0-windows` | WinForms tests (xUnit) | `net48; net6.0/8.0/10.0-windows` |
 
-### A3. Fix empty-scan event on buffer overflow — DONE
-* **Files:** `GenericScanDetector.cs` (only; `DetectorData.cs` needed no change)
-* **Actions:**
-  - In `HandleReturnInput`, return early when the assembled text is empty, before the cooldown/newline-complement bookkeeping and before raising `BarcodeScanned`. The cooldown already set by the overflow in `DetectorData.Enqueue` stays in force.
-  - The same guard fixes a **second** empty-event path found while testing: a fast newline with nothing buffered (e.g. Enter within the threshold of `Reset()`, or of detector construction) used to raise an empty `BarcodeScanned` *and* start a 300 ms cooldown that swallowed the next real scan. Now it raises nothing and starts no cooldown.
-  - Semantics: only a completed scan starts the scan-completed cooldown (and sets the A2 newline-complement marker). For an over-limit scan ending in CRLF the overflow's cooldown applies and the trailing LF extends it by the CR→LF gap, exactly like any other fast input during a cooldown.
-  - **Tests:** `BufferBoundaryTests`: 4096 → one event with all characters; 4097 and 4098 → no event, the cooldown discards the next scan and then expires; lone newline → no event, no cooldown. (`BufferLimitTest` with 4100 chars stays as it is.)
-  - The BPMN cooldown annotation was updated (D4, A3 part).
+Notes:
+- Later runtimes consume the nearest floor asset: for the adapters `net472` (Framework) and `net8.0-windows`; for the core `netstandard2.0` / `netstandard2.1`.
+- On Linux/macOS the core tests run with `dotnet test -f net10.0` (this also retires the current `DOTNET_ROLL_FORWARD=Major` workaround). On Windows they run under `net48` and `net10.0`.
+- Windows-only projects compile on Linux with `-p:EnableWindowsTargeting=true` *(verified for the current WPF/WinForms projects, tests and demos, all four current Windows TFMs)*, but their tests cannot run there. Re-verify for `net472` and for WinUI (unverified; WinUI may need Windows tooling).
 
-### A4. Correct timestamp/delta argument usage — DONE
-* **Files:** `TextInputArgs.cs`, `GenericScanDetector.cs`, `DetectorData.cs`
-* **Actions:**
-  - Added `TextInputEventArgs(string text, long timestampTicks, long deltaToPreviousTicks)` and the matching `ReturnInputArgs(text, timestampTicks, deltaToPreviousTicks)` (which still validates that the text is a newline), so callers state both values explicitly. `TimestampTicks` is now assigned in the constructor instead of a property initializer. The existing two-argument constructors remain (additive change, no break) and chain to the new ones; their doc comment says the argument is a delta, not a timestamp. External callers who pass a timestamp there still compile, which cannot be prevented without a breaking change (C3).
-  - Updated every construction site: `GenericScanDetector.ProcessInput` (now passes its own `nowTicks`, so one clock read is used for both the delta and the stored timestamp), the cooldown branch (placeholder keeps the real `delta`), `HandleFastInput` (passes `DeltaToPreviousTicks`, not `TimestampTicks`, into the `ReturnInputArgs`), `Reset()`, and the initial `DetectorData.PreviousInput` (delta `0`).
-  - Observable effect, tested: the initial `DetectorData.PreviousInput.DeltaToPreviousTicks` is now `0` instead of the creation timestamp. Detection behaviour is unchanged.
-  - **Tests:** `TextInputArgsTests`.
+### Public API (`InspiredCodes.BarcodeScanDetector`)
 
-### A5. Externalize timing and buffer limits — DONE
-* **Files:** `DetectorConfig.cs`, `DetectorData.cs`, `GenericScanDetector.cs`
-* **Actions:**
-  - Added a **setter for `ThresholdMillisec`** (it delegates to the existing `ThresholdTicks` setter).
-  - Added `CooldownMillisec` (default 300) and `MaxBufferLength` (default 4096) as static properties, plus an `internal` `CooldownTicks` for the detector code.
-  - Replaced every hard-coded cooldown (`GenericScanDetector`: the scan-completed cooldown and the extension by fast input in cooldown; `DetectorData`: the overflow cooldown) and the `4096` check in `DetectorData.Enqueue`. Nothing in the library hard-codes them any more; the defaults live only in `DetectorConfig`.
-  - **Validation (new, throws `ArgumentOutOfRangeException`):** `ThresholdMillisec` and `CooldownMillisec` reject negative values (`CooldownMillisec = 0` is allowed and disables the cooldown); `MaxBufferLength` rejects values below 1. A rejected set leaves the old value in place. `ThresholdTicks` keeps its existing unvalidated setter so that nothing that worked before starts throwing.
-  - These stay **static for now**. Per-instance options arrive in C2; do not design the static API as if it were final. They are plain static fields read without synchronization; A6 should decide whether that needs to change.
-  - **Tests:** `DetectorConfigLimitsTests` covers defaults, setters, validation, and behaviour at each of the four replaced sites. Mutation-checked: restoring any one hard-coded literal fails at least one test.
-  - The BPMN cooldown annotation now says 300 ms / 4096 chars are the defaults, with the property names. (The task labels "start 300ms cooldown" and "> 4096" in the diagram still show the default numbers.)
+> **OD-1 must be resolved first:** the class name `BarcodeScanDetector` below does not compile where it is needed.
 
-### A6. Thread safety — DONE
-* **Files:** `GenericScanDetector.cs`, `DetectorConfig.cs`, `DetectorData.cs` (documentation only)
-* **Actions:**
-  - **Measured before fixing:** with 4 threads sending `\r` at once after a buffered `ABC`, the unsynchronized detector corrupted the scan in 954–1,453 of 1,500 rounds on every run (duplicated characters such as `ABCC`, or `ABC` plus a spurious `C` event).
-  - One lock (`_sync`) owned by `GenericScanDetector` now covers the whole `ProcessInput` and `Reset` state transition: `Data` (queue, `PreviousInput`, `CooldownEndTicks`) and `_newlineComplement`. The clock is read inside the lock so timestamps follow processing order. Lock order is `_sync`, then `DetectorData`'s queue lock; the latter never takes `_sync`. `DetectorData` is documented as not thread-safe on its own beyond its queue operations.
-  - **`BarcodeScanned` is raised after the lock is released.** The internal methods return the completed scan instead of raising it; the cooldown started by A2 is already in place when the event fires. A handler can therefore block, call back into the detector, or wait on another thread's input without deadlocking.
-  - The A5 static settings: `ThresholdTicks` now uses `Interlocked.Read`/`Exchange` (a 64-bit value can tear in a 32-bit process, e.g. a default AnyCPU `net48` app); `CooldownMillisec` and `MaxBufferLength` are `volatile`. Not unit-testable (needs a 32-bit process); behaviour is covered by the existing config tests.
-  - **Consequence to document for consumers:** when input arrives from several threads, `BarcodeScanned` handlers run on whichever thread completed the scan and may run concurrently with input processing on other threads. With single-threaded input (the WPF/WinForms adapters) nothing changes.
-  - **Tests:** `ConcurrencyTests`: simultaneous newlines raise exactly one event (the red test above); the handler runs outside the lock; concurrent input plus `Reset()` does not throw. Mutation-checked: removing the lock fails the first, raising the event inside the lock fails the second.
-  - **Test-hygiene lesson:** the detectors are static, so a test that subscribes to `BarcodeScanned` and doesn't unsubscribe changes every later test (an early version of `HandlerRunsOutsideTheDetectorLock` made three unrelated tests fail only in a full run). Always unsubscribe in `finally`/`[TestCleanup]`. `ScanDetectorTests` (original code) still leaves handlers subscribed; they only record into old queues, but tidy this up in B3.
+```csharp
+public sealed class ScanDetectorOptions
+{
+    public TimeSpan InterKeyThreshold { get; set; } = TimeSpan.FromMilliseconds(32);
+    public TimeSpan Cooldown          { get; set; } = TimeSpan.FromMilliseconds(300);
+    public int      MaxLength         { get; set; } = 4096;
+    public ScanTerminators Terminators { get; set; } = ScanTerminators.Enter; // Enter (\r, \n, \r\n) or Tab — see OD-2
+}
 
-### A7. Idempotent UI registration — DONE (tests written and compiled, **not yet run**)
-* **Files:** `WpfScanDetectorExtensions.cs`, `WinFormsScanDetectorExtensions.cs`
-* **Actions:**
-  - In each `Register…` method (`RegisterTextInput`, `RegisterPreviewTextInput`, `RegisterKeyPress`), detach the static handler (`-=`) before attaching (`+=`). This is idempotent because both use the same static method group; a scratch program with the same pattern showed 2 handlers after a double register (and 1 leaked after one unregister) with plain `+=`, versus exactly 1 and 0 with detach-first.
-  - XML docs on both extension classes: the adapters only observe (input still reaches the focused control), all registered elements/controls share the one global detector until C2, repeated registration is harmless and one `UnRegister` detaches. The WinForms `RegisterKeyPress` doc states that a form only sees child-control keys with `KeyPreview = true`.
-  - **Tests (xunit, Windows-only to run):**
-    - WPF: `MockInputElement` gained `TextInputHandlerCount`/`PreviewTextInputHandlerCount` (via `GetInvocationList`), so idempotency is asserted without a WPF dispatcher: register twice → 1 handler; unregister after a double register → 0; re-register after unregister → 1; unregister when never registered is a no-op; text and preview registrations are independent.
-    - WinForms: a `Control` subclass raises `KeyPress` through the protected `OnKeyPress`, and the tests assert through the real detector: a double registration must give `ABC`, not `AABBCC`; unregister after a double register stops forwarding; re-registration works. Each test resets the static detector, widens the threshold to 1 s and restores it.
-  - **Verification status:** all four Windows targets (`net48`, `net6.0-windows`, `net8.0-windows`, `net10.0-windows`) of both adapters, both test projects and both demos **compile** on Linux with `-p:EnableWindowsTargeting=true`, but these tests could not be executed there. **Run `dotnet test` on both test projects on Windows before relying on A7**, and confirm at least one of them fails without the `-=` line.
-  - Limitation (unchanged until C2): the handlers forward to the **global** detector, so two registered windows share one state machine.
+public readonly struct KeyInput
+{
+    public KeyInput(string text, TimeSpan timestamp) { Text = text; Timestamp = timestamp; }
+    public string Text { get; }
+    public TimeSpan Timestamp { get; }
+}
 
-### A8. `sender` parameter decision — DONE (decision: honor it)
-* **Files:** `GenericScanDetector.cs`, `ScanDetector.cs`
-* **Actions:**
-  - `SimulateFastInput`'s `sender` was dead (handlers always saw `null`). Decision: **honor it** rather than mark the overloads `[Obsolete]`. No external caller needed to be warned and the parameter now does what its name says.
-  - Implementation: a private `ProcessInput(string text, object? sender)` does the work; the public `ProcessInput(string text)` (real input) calls it with `null`. `SimulateFastInput` passes its `sender` with every character and with the closing newline, so the event raised by the scan that the simulation completes carries it. The event is still raised after the A6 lock is released. `OnBarcodeScannedEvent` takes the sender.
-  - Resulting rules (documented on the facade overloads): `SimulateBubbleFastInput(sender, …)` / `SimulateTunnelFastInput(sender, …)` → handlers see `sender`; the one-argument overloads and real input (the WPF/WinForms adapters) → `null`; a sender never sticks to a later scan.
-  - **Tests:** `SenderTests` (cooldown set to 0 for the tests to avoid sleeps). Mutation-checked: dropping the sender on the closing newline fails three of them.
-  - **For C2:** the instance detector raises events with itself as `sender`; what that means for the static facade (which today forwards the simulate-supplied object or `null`) is decided there. Do not leak the internal `GenericScanDetector` type through `sender`.
+public sealed class BarcodeScanDetector   // name: OD-1
+{
+    public BarcodeScanDetector(ScanDetectorOptions? options = null);
+    public event EventHandler<BarcodeScannedEventArgs>? BarcodeScanned;
 
----
+    public void ProcessInput(string text);
+    public void ProcessInput(string text, TimeSpan timestamp);
+    public void ProcessBatch(IList<KeyInput> inputs);
+    public void Simulate(string barcode);
+    public void Reset();
+}
 
-## Phase B: Deterministic Time & Test Modernization (non-breaking)
+// Static convenience facade for single-window apps
+public static class ScanDetector
+{
+    public static BarcodeScanDetector Default { get; }
+    public static BarcodeScanDetector Preview { get; }
 
-### B1. Monotonic, injectable clock
-* **Files:** `GenericScanDetector.cs`, `DetectorData.cs`, `TextInputArgs.cs`
-* **Actions:**
-  - Measure deltas and cooldowns with `Stopwatch.GetTimestamp()`, converted to 100 ns ticks via `Stopwatch.Frequency`. **Do not use `Environment.TickCount64`** (not available on the targets).
-  - Keep the **public** `TimestampTicks` on `BarcodeScannedEventArgs` and `TextInputEventArgs` as wall-clock (`DateTime.UtcNow`/`Now`) so consumers are not broken; the monotonic value is internal.
-  - Route all time reads through an internal `Func<long>` clock so tests can drive time deterministically. Guard against negative deltas.
-  - Before adding `InternalsVisibleTo` for the test project, check whether the assembly is actually strong-name signed (`SignAssembly` is `True`); a signed assembly requires the friend assembly's public key in the attribute.
+    public static event EventHandler<BarcodeScannedEventArgs> BarcodeScanned;
+    public static event EventHandler<BarcodeScannedEventArgs> PreviewBarcodeScanned;
 
-### B2. Modernize test targets
-* **File:** `InspiredCodes.BarcodeScanDetector.Tests/InspiredCodes.BarcodeScanDetector.Tests.csproj`
-* **Actions:**
-  - Replace `net6.0` (out of support) with `net8.0;net10.0`, or just `net10.0`. net8.0 reaches end of support in November 2026, so prefer `net10.0` alone unless net8.0 coverage is needed.
-  - Bump `Microsoft.NET.Test.Sdk`, `MSTest.*` (3.0.1) and `coverlet.collector` and confirm they run against the new target.
-  - Every extra target repeats the wall-clock tests (`SimulateFastInputTest` alone is ~12 s). Do the B1 clock work before multi-targeting so timing tests shrink instead of multiplying.
-  - This is a modernization, not a typo fix. Local machines need the matching runtimes installed (only .NET 10 is present on the current dev box).
+    public static void ProcessInput(string text);
+    public static void ProcessPreviewInput(string text);
+    public static void SimulateBubbleFastInput(string barcode);
+    public static void SimulateTunnelFastInput(string barcode);
+    public static void Reset();
+}
+```
 
-### B3. Expand the test suite
-* **File:** `InspiredCodes.BarcodeScanDetector.Tests/ScanDetectorTests.cs` (plus a new internal-detector test class using the B1 clock)
-* **Actions (using the injected clock, not `Thread.Sleep`):**
-  - **CR-only scan** and **CRLF scan**: one event; the trailing `\n` does not extend the cooldown (A2); a different fast input during cooldown still extends it.
-  - **Interleaved typing**: fast burst, pause > threshold, fast burst → no event, queue reset.
-  - **Buffer boundaries**: done in A3 (`BufferBoundaryTests`, wall-clock based). In B3 only switch its cooldown-expiry sleeps to the injected clock.
-  - **Handler re-entrancy**: a handler that feeds input during the event observes an active cooldown (A2), and does not deadlock (A6).
-  - **Idempotent registration** (Windows only): `MockInputElement` (WPF tests) and a `Control` (WinForms tests) registered twice must forward each input **once**. Assert through the facade, not just "does not throw".
-* **Note:** the facade's `SimulateFastInput` strips CR/LF and always sends a single `\n`; CR/CRLF tests must call `ProcessInput` directly.
+### Behaviour Contract
+
+The v3 engine is a rewrite. These rules are implemented and tested in the current engine (Phase 0) and **must hold for the new one**; each has tests to port.
+
+| Rule | Behaviour | From | Tests today |
+|---|---|---|---|
+| R1 | `\r`, `\n`, `\r\n`, `\n\r` are recognised as Enter; validation does not allocate per character. | A1 | `DetectorConfigTests` |
+| R2 | During the cooldown, the **immediate** complement of the newline that ended a scan (`\n` after `\r`, `\r` after `\n`), arriving within the threshold, is discarded **without** extending the cooldown. Only the very next input qualifies. | A2 | `CooldownNewlineTests` |
+| R3 | The cooldown starts **before** `BarcodeScanned` is raised and is measured from scan completion, not from when the handler returns. Input fed from a handler runs into it. | A2 | `CooldownNewlineTests` |
+| R4 | A terminator with **nothing buffered** raises no event and starts no cooldown (e.g. Enter right after `Reset()` or construction). | A3 | `BufferBoundaryTests` |
+| R5 | A scan of exactly `MaxLength` chars is reported; one char more is discarded, raises **no** event (never an empty one) and starts the cooldown. | A3, A5 | `BufferBoundaryTests`, `DetectorConfigLimitsTests` |
+| R6 | During the cooldown, input is discarded; fast input extends the cooldown by the full `Cooldown`; slow input does not. `Cooldown = 0` disables it. | A5 | `DetectorConfigLimitsTests` |
+| R7 | Options validation: threshold and cooldown must not be negative (0 allowed); `MaxLength` ≥ 1; invalid values throw `ArgumentOutOfRangeException`. | A5 | `DetectorConfigLimitsTests` |
+| R8 | Thread-safe: one lock covers every state transition (`ProcessInput`, `ProcessBatch`, `Reset`); `BarcodeScanned` is raised **after** the lock is released, so handlers may block or call back in. `ProcessBatch` collects completed scans under the lock and raises them afterwards, in order. | A6 | `ConcurrencyTests` |
+| R9 | Registering an adapter twice forwards each input once; one unregister detaches completely. | A7 | WPF/WinForms test projects (never run, see Phase 0) |
+| R10 | The event `sender` is the detector instance (replaces A8, whose `Simulate…(sender, …)` overloads are dropped by the v3 facade; record this in the migration notes). | A8 → v3 | `SenderTests` (rewrite) |
 
 ---
 
-## Phase C: Breaking Changes (3.0.0)
+## Execution Order
 
-Ship only as a deliberate major release. Bump `AssemblyVersion`/`FileVersion`/`Version` in **every** csproj (they are duplicated by hand) and write migration notes.
+```mermaid
+flowchart TD
+    Phase0["0. Hardening of the 2.x engine (DONE: A1–A8)"]
+    Phase1["1. Build & Config Cleanups: xUnit migration, unsigned assemblies, Debug/Release"]
+    Gate{"Decisions OD-1 … OD-5"}
+    Phase2["2. Core Engine Rewrite: Stopwatch timing, instance API, options, behaviour contract"]
+    Phase3["3. WPF & WinForms Adapters: net472/net8.0-windows, handledEventsToo, MessageFilter, idempotency"]
+    Phase4["4. WinUI 3 Adapter & Demo"]
+    Phase5["5. Blazor WASM PWA Adapter & Demo"]
+    Phase6["6. Verification & Release 3.0.0"]
 
-### C1. Namespace alignment
-* **Files:** all types in `InspiredCodes.BarcodeScanDetector`, the WinForms adapter, core tests, demos, READMEs.
-* **Actions:**
-  - Move the core types from `InspiredCodes.WPF.BarcodeScanDetector` to `InspiredCodes.BarcodeScanDetector`. (Revision 1 said "change `InspiredCodes.BarcodeScanDetector` to `InspiredCodes.BarcodeScanDetector`", which is a no-op.)
-  - Remove `using InspiredCodes.WPF.BarcodeScanDetector;` from the WinForms adapter; the WPF adapter keeps its own namespace for the extension methods.
-  - **Type forwarders cannot do this**: they redirect a type between assemblies and cannot alias a namespace. Either accept the break and document it (recommended), or ship `[Obsolete]` shim types in the old namespace for one release. Existing consumers with `using InspiredCodes.WPF.BarcodeScanDetector;` will lose `ScanDetector`/`BarcodeScannedEventArgs` resolution.
+    Phase0 --> Phase1 --> Gate --> Phase2
+    Phase2 --> Phase3
+    Phase2 --> Phase4
+    Phase2 --> Phase5
+    Phase3 --> Phase6
+    Phase4 --> Phase6
+    Phase5 --> Phase6
+```
 
-### C2. Instantiable detectors and options
-* **Files:** `GenericScanDetector.cs`, `ScanDetector.cs`, `DetectorConfig.cs`, both adapters
-* **Actions:**
-  - Make the detector public (e.g. `BarcodeScanDetector`, optionally behind `IScanDetector`) so isolated instances can serve separate windows, controls or devices.
-  - Move threshold, cooldown and buffer limit into a per-instance options object (defaulting from the A5 statics), so instances can differ. Static-only config contradicts instantiable detectors.
-  - Change `public class ScanDetector` to `public static class ScanDetector`; it remains a convenience facade over default instances.
-  - The instance raises events with itself as `sender` (resolves A8).
-  - **Add adapter overloads that take a detector instance**, e.g. `RegisterTextInput(this IInputElement e, BarcodeScanDetector detector)`. Without this, instance detectors are unreachable from the extension methods, because the current handlers are static and bound to the global detector.
-
-### C3. Public surface review
-* `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs` and `DetectorConfig` are public implementation details. Decide per type whether to make it `internal` (preferred) or keep it public; `DetectorConfig` is a class of only statics and should become `static class` if it stays.
-
----
-
-## Phase D: Packaging, Documentation & BPMN
-
-### D1. Project configuration
-* **File:** `InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj`
-* **Actions:**
-  - Line 13: fix `$(AssemlbyVersion)` → `$(AssemblyVersion)`. (Cosmetic; the generated version is already correct.)
-  - Rewrite `PackageReleaseNotes`; the current text ("removed netstandard, supports net6.0-windows and net48 as there is a dependency to WPF") is stale. The core targets `netstandard2.0;netstandard2.1` and has no WPF dependency.
-
-### D2. README packaging
-* **Decision needed:** the core csproj packs the root `README.md` as `PackageReadmeFile`. Either (a) keep the root README as the package readme and make it package-appropriate, or (b) pack `InspiredCodes.BarcodeScanDetector/README.md`. Whichever is chosen, D3's edits must land in the file that is actually packed.
-
-### D3. Documentation cleanup
-* **Files:** `README.md`, `InspiredCodes.BarcodeScanDetector/README.md`
-* **Actions:**
-  - Replace the absolute `file:///c:/Users/Peter/...` links in the root README with repository-relative links.
-  - Core README: replace nonexistent `ScanDetector.Register(this)` with `this.RegisterTextInput()`; fix `BarcodeScannedArgs` → `BarcodeScannedEventArgs`; remove the stale "needs reference to PresentationCore" claim (the core no longer depends on it); remove the internal Steelcase feed/push/delete commands and the `@since … @steelcase.com` line.
-  - State that `ScanDetector` observes input and does **not** suppress it from reaching focused controls.
-
-### D4. BPMN alignment
-* **File:** `Documentation/CharInputStateMachine.bpmn`
-* **Actions:**
-  - Update the cooldown annotation ("Extends on fast inputs during cooldown") to carve out the swallowed newline-complement (A2).
-  - Add the "assembled text empty → no event" path to the return/queue branch (A3).
-  - Ship this with A2/A3, not later; otherwise the BPMN no longer matches the code it is meant to specify.
-
-### D5. WinForms package metadata
-* **File:** `InspiredCodes.WinForms.BarcodeScanDetector/InspiredCodes.WinForms.BarcodeScanDetector.csproj`
-* **Decision needed:** the root README presents this project as a package, but it has `GeneratePackageOnBuild=false` and no package metadata (description, license, authors, product). Either add the metadata and enable packing, or stop describing it as a NuGet package.
+Priority order: **1 → 2 → 3 → 6** is the critical path that replaces today's packages; **4 and 5** add platforms and can follow 3 or run in parallel with it.
 
 ---
 
-## Verification & Rollout
+## Phase 0: Hardening of the 2.x Engine — DONE
+
+All on branch `ehc-01`, committed. Details are in the commit messages.
+
+| Item | Change | Commit |
+|---|---|---|
+| A1 | `NewLineRN` is `"\r\n"` (was `"\n\r"`), `"\n\r"` still recognised; allocation-free CR/LF check | `6f8228b` |
+| A2 | CRLF-pair complement doesn't extend the cooldown; cooldown starts before the event (R2, R3); BPMN annotation updated | `a031a47` |
+| A3 | No empty `BarcodeScanned` (4097-char overflow, lone newline) and no cooldown for it (R4, R5); BPMN updated | `93e5ea7` |
+| A4 | `TextInputEventArgs`/`ReturnInputArgs` take timestamp **and** delta explicitly | `703a644` |
+| A5 | Static `CooldownMillisec`, `MaxBufferLength`, settable `ThresholdMillisec`, with validation (R6, R7); BPMN updated | `0855aec` |
+| A6 | One lock per detector, event raised outside it; `Interlocked`/`volatile` config (R8). Before the fix, a 4-thread stress test corrupted 954–1,453 of 1,500 rounds *(verified)* | `32de4c7` |
+| A7 | Idempotent `Register…` (detach before attach) in both adapters, docs on `KeyPreview`/observe-only (R9) | `1111069` |
+| A8 | `Simulate…(sender, …)` passes `sender` to handlers | `370b961` |
+
+Lessons that carry forward:
+- The detectors behind `ScanDetector` are **static**: a test that subscribes to `BarcodeScanned` and doesn't unsubscribe changes every later test (this broke three unrelated tests once). Always unsubscribe in `Dispose`/`finally`.
+- Wall-clock tests need ~50 ms margins and stopwatch-relative timing; mutation-check them, because a weak margin can let a broken implementation pass (happened once in A2).
+- **Outstanding:** the A7 tests (WPF/WinForms) have never been executed. Run them on Windows once before Phase 3 to have a baseline.
+
+---
+
+## Phase 1: Build & Config Cleanups (on the current engine)
+
+Goal: the toolchain decisions are in place and the **current** engine's 78 core tests pass under xUnit, so they can guard the Phase 2 rewrite.
+
+### 1.1 Migrate the core tests from MSTest to xUnit
+* **Project:** `InspiredCodes.BarcodeScanDetector.Tests` → `net48; net10.0`, `xunit` + `xunit.runner.visualstudio` (same 2.x version in all three test projects, OD-6); remove `MSTest.TestAdapter`/`MSTest.TestFramework`.
+* **Mapping:** `[TestClass]` → plain class; `[TestInitialize]`/`[TestCleanup]` → constructor / `IDisposable`; `[TestMethod]` → `[Fact]`; `[DataTestMethod]`+`[DataRow]` → `[Theory]`+`[InlineData]`; `Assert.ThrowsException` → `Assert.Throws`; `CollectionAssert.AreEqual` → `Assert.Equal`; `Assert.AreSame` → `Assert.Same`.
+* **Disable test parallelization** (`[assembly: CollectionBehavior(DisableTestParallelization = true)]`): xUnit runs test classes in parallel by default, and every class drives the same static detector and static config.
+* `CooldownNewlineTests` uses `Assert.Inconclusive` as a timing guard; xUnit 2 has no equivalent. Until Phase 2 removes the wall-clock tests, turn the guard into a failure with the same message.
+* While migrating, unsubscribe the handlers `ScanDetectorTests` leaves attached.
+* **Done when:** the same 78 tests pass on `net10.0` (Linux) and on `net48` + `net10.0` (Windows), and a spot mutation (e.g. removing the A6 lock, removing the A3 empty-text guard) still fails them.
+
+### 1.2 Remove assembly signing
+* Remove `<SignAssembly>True</SignAssembly>` from the core and WPF csproj (and anywhere else). This also removes the earlier `InternalsVisibleTo` concern.
+
+### 1.3 Standard `Debug`/`Release` configurations
+* Remove `<Configurations>Debug;Optimized</Configurations>` and the `Optimized` property groups from the core and core-test csproj; `Release` gets `<Optimize>true</Optimize>`. Update `CLAUDE.md` (it documents `Debug;Optimized`).
+
+### 1.4 Core csproj fixes
+* Fix `<FileVersion>$(AssemlbyVersion)</FileVersion>` → `$(AssemblyVersion)` (cosmetic: the SDK already falls back to `2.0.1.0` *(verified)*).
+* Rewrite the stale `PackageReleaseNotes` ("removed netstandard, … dependency to WPF").
+
+---
+
+## Phase 2: Core Engine Rewrite
+
+**Gate:** OD-1 to OD-5 decided.
+
+### 2.1 Namespace and public types
+* All core types move from `InspiredCodes.WPF.BarcodeScanDetector` to `InspiredCodes.BarcodeScanDetector`. Type forwarders cannot alias a namespace, so this is a documented break (migration notes in 6.3).
+* Public API as in *Public API* above. `ScanDetector` becomes a `static class`.
+* Public surface review: `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs` become `internal` or disappear; the static `DetectorConfig` is replaced by `ScanDetectorOptions` (OD-4).
+
+### 2.2 Timing
+* Monotonic `Stopwatch.GetTimestamp()`, converted with `Stopwatch.Frequency` (its ticks are not 100 ns). `Environment.TickCount64` does **not** exist on `netstandard2.0`/`2.1` *(verified, CS0117)*.
+* `ProcessInput(text, timestamp)` and `ProcessBatch` use the caller's timestamps; every cooldown start and comparison uses the timestamp of the input being processed (OD-3).
+* `Simulate(barcode)` generates synthetic timestamps instead of sleeping. Today's `SimulateFastInput` blocks the calling thread with `Task.Delay(...).Wait()`, which freezes a UI thread.
+
+### 2.3 Options and terminators
+* `ScanDetectorOptions` as in *Public API* above, with the R7 validation; snapshot at construction (OD-4).
+* `ScanTerminators` per OD-2.
+
+### 2.4 Tests (port the behaviour contract)
+* Port every test listed in the *Behaviour Contract* to the new API. Use **explicit timestamps** instead of `Thread.Sleep`, so cooldown boundaries are asserted exactly and the 50 ms wall-clock margins and runtime-skip guards disappear.
+* Keep the concurrency stress test (R8) unchanged in spirit: N threads, one buffered scan, simultaneous terminators, exactly one event.
+* Add: interleaved typing (fast burst, pause > threshold, fast burst → no event); `ProcessBatch` with several scans in one batch (events in order, raised outside the lock); Tab terminator (OD-2); time-base rules (OD-3).
+
+### 2.5 BPMN
+* Update `Documentation/CharInputStateMachine.bpmn` for v3: option names, terminators, the empty-scan path (R4). The annotation already documents R2, R3, R4 and the configurable defaults.
+
+---
+
+## Phase 3: WPF & WinForms Adapters
+
+### 3.1 Target frameworks
+* Adapters `net472; net8.0-windows`; their tests `net48; net10.0-windows` (from today's `net48; net6.0/8.0/10.0-windows`).
+
+### 3.2 WPF (`InspiredCodes.WPF.BarcodeScanDetector`)
+* Register with `AddHandler(TextCompositionManager.TextInputEvent, handler, handledEventsToo: true)` (and the preview event likewise) to catch input that focused controls mark as handled.
+* **Breaking:** `AddHandler(…, handledEventsToo)` exists on `UIElement`, not on `IInputElement`, so the extension target changes from `IInputElement` to `UIElement`. The current `MockInputElement` tests no longer apply; tests need a real `UIElement`, created on an STA thread.
+* Extension methods take an optional detector instance (default `ScanDetector.Default` / `.Preview`).
+* Idempotency via a `ConditionalWeakTable` of (element, detector) → handler. Today's detach-before-attach trick (A7) only works because the handler is one static method; per-detector handlers are closures, and a new closure never equals the attached one.
+
+### 3.3 WinForms (`InspiredCodes.WinForms.BarcodeScanDetector`)
+* Add `BarcodeScanMessageFilter : IMessageFilter` (`WM_CHAR` at application level): it sees typed characters wherever the focus is, without `KeyPreview`.
+* `RegisterKeyPress` stays and stays idempotent (R9); with a detector parameter it needs the same `ConditionalWeakTable` approach as WPF. Its doc keeps the `KeyPreview = true` note.
+* Package metadata (description, license, authors, icon) and `GeneratePackageOnBuild=true`.
+
+### 3.4 Demos and verification
+* Update `WpfDemo` and `WinFormsDemo` to the v3 API.
+* Compile-check on Linux (`-p:EnableWindowsTargeting=true`); run the tests and demos on Windows.
+
+---
+
+## Phase 4: WinUI 3 Adapter & Demo
+
+* `InspiredCodes.WinUI.BarcodeScanDetector` (`net8.0-windows10.0.19041.0`): attach to the root `UIElement` / `Window.Content` via `CharacterReceivedEvent` with `handledEventsToo: true`; optional detector parameter; idempotent like 3.2.
+* Demo: `InspiredCodes.BarcodeScanDetector.WinUIDemo` (WinUI 3 desktop app).
+* Verification: Windows; check early whether it builds on Linux at all.
+
+---
+
+## Phase 5: Blazor WebAssembly PWA Adapter & Demo
+
+* `InspiredCodes.Blazor.BarcodeScanDetector` (`net8.0` RCL): capture-phase JS `keydown` listener recording `event.timeStamp`; batched interop to `ProcessBatch(inputs)` on a terminator or after 100 ms of silence.
+* Timestamps are in the page's time base, so each Blazor detector uses only `ProcessBatch` (OD-3). Batching adds latency to the event, not to the measured key intervals.
+* Scoped DI service `BlazorBarcodeScanService` and a `<BarcodeScanListener>` Razor component.
+* Demo: `InspiredCodes.BarcodeScanDetector.BlazorPwaDemo` (Blazor WASM PWA).
+
+---
+
+## Phase 6: Verification & Release 3.0.0
+
+### 6.1 Verification matrix
 
 | Check | Where | Command / action |
 |---|---|---|
-| Core build | Any OS | `dotnet build InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj` |
-| Core tests | Any OS (runtime for the chosen TFM installed) | `dotnet test InspiredCodes.BarcodeScanDetector.Tests`; locally on a newer-only runtime, `DOTNET_ROLL_FORWARD=Major` |
-| WPF / WinForms adapter tests | **Windows only** | `dotnet test` on each test project |
-| Demos | **Windows only** | Run `WpfDemo` and `WinFormsDemo`; trigger the UUIDv7 simulator and a real scanner if available |
-| Packaging | Any OS | `dotnet build` already runs pack (`GeneratePackageOnBuild`); inspect the `.nupkg` for the readme, icon, version, and (3.0.0) migration notes |
+| Core build | any OS | `dotnet build InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj` |
+| Core tests | Linux/macOS: `net10.0`; Windows: `net48` + `net10.0` | `dotnet test InspiredCodes.BarcodeScanDetector.Tests -f net10.0` (Linux) |
+| WPF / WinForms / WinUI tests | Windows | `dotnet test` on each test project |
+| Windows projects compile | Linux | `dotnet build <project> -p:EnableWindowsTargeting=true` |
+| Blazor | any OS + browser | build; run the PWA demo; scan with a real scanner and with the simulator |
+| Demos | per platform | simulator (UUIDv7) and a real scanner if available |
+| Packages | any OS | inspect each `.nupkg`: readme (OD-7), icon, version 3.0.0, metadata (OD-8) |
 
-Release sequence: **A + D4 (BPMN) + the A-related D3 items → B → C with the 3.0.0 bump.** A regression test accompanies every behavioural fix in A.
+### 6.2 Versioning and packaging
+* Bump `AssemblyVersion`/`FileVersion`/`Version` to 3.0.0 in **every** csproj (they are duplicated by hand).
+* Consistent package metadata per the decisions above (OD-8).
+
+### 6.3 Documentation
+* Migration notes 2.x → 3.0: namespace move; `DetectorConfig` → `ScanDetectorOptions`; `ScanDetector` facade changes (instances, dropped `Simulate…(sender, …)` overloads); WPF extension target `IInputElement` → `UIElement`; dropped TFMs (`net6.0`, below `net472`); no strong name; no `Optimized` configuration.
+* Root `README.md`: replace the absolute `file:///c:/Users/Peter/...` links with repository-relative ones; document all four platforms.
+* `InspiredCodes.BarcodeScanDetector/README.md`: remove the nonexistent `ScanDetector.Register(this)`, the wrong type name `BarcodeScannedArgs`, the stale "needs PresentationCore" claim, and the internal Steelcase feed/push/delete commands and `@since … @steelcase.com` line.
+* State everywhere that the detector **observes** input and never suppresses it.
+* `CLAUDE.md`: commands (`-f net10.0`, `Debug`/`Release`), architecture (instances, adapters, Blazor/WinUI).
+
+### 6.4 Publish
+* NuGet 3.0.0 for core, WPF, WinForms, WinUI and Blazor packages.
 
 ---
 
-## Revision notes
+## Superseded Items from the Hardening Plan
 
-Changes from revision 1, as found by validation against the code:
+For traceability; nothing below needs doing as written.
 
-* **1.2:** removed the "doubling to 600 ms" claim (measured ~8 ms) and added the BPMN conflict; the BPMN update is now an explicit task (D4).
-* **1.3:** reclassified from "critical" to cleanup; added the other call sites that pass a timestamp as a delta.
-* **1.4:** replaced `Environment.TickCount64` (unavailable on netstandard) with `Stopwatch` + frequency conversion; kept public `TimestampTicks` wall-clock to avoid a silent breaking change; added the injectable clock.
-* **3.3:** fixed the garbled namespace step, removed the unworkable "type forwarders" suggestion, moved it to the 3.0.0 breaking phase.
-* **4.1:** marked the `FileVersion` typo as cosmetic.
-* **4.2:** no longer called a "typo"; dropped EOL net6.0, noted runtime availability and per-TFM cost, sequenced after the clock work.
-* **4.3:** acknowledged that `BufferLimitTest` exists; added boundary, re-entrancy and deterministic-clock tests; noted `SimulateFastInput` cannot produce CR/CRLF input.
-* **New:** the 4097-char empty-event bug (A3); the ignored `sender` parameter (A8); adapters not reaching instance detectors (C2); README-packaging, WinForms-package and stale-README findings (D2, D3, D5); release phasing and a corrected verification matrix.
+| Old item | Superseded by |
+|---|---|
+| B1 injectable `Func<long>` clock, `InternalsVisibleTo` | Phase 2.2 timestamp API (the explicit-timestamp overloads are the test seam); Phase 1.2 (no signing) |
+| B2 core tests on `net8.0;net10.0`, MSTest updates | Phase 1.1 (xUnit, `net48; net10.0`) |
+| B3 test expansion | 2.4 |
+| C1 namespace move | 2.1 |
+| C2 instance detectors, options, adapter overloads | *Public API*; Phases 2.1, 3.2, 3.3 |
+| C3 public surface review | 2.1 |
+| D1 csproj typo, release notes | Phase 1.4 |
+| D2 package readme | OD-7, 6.3 |
+| D3 documentation cleanup | 6.3 |
+| D4 BPMN | done for Phase 0; v3 update in 2.5 |
+| D5 WinForms package metadata | 3.3 |
