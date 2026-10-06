@@ -29,11 +29,11 @@ public class DetectorData
             return;
         lock (LockQueue)
         {
-            if (_totalLength + args.Text.Length > 4096)
+            if (_totalLength + args.Text.Length > DetectorConfig.MaxBufferLength)
             {
                 TextInputQueue.Clear();
                 _totalLength = 0;
-                CooldownEndTicks = DateTime.Now.Ticks + (300 * TimeSpan.TicksPerMillisecond);
+                CooldownEndTicks = DateTime.Now.Ticks + DetectorConfig.CooldownTicks;
                 return;
             }
             TextInputQueue.Enqueue(args);

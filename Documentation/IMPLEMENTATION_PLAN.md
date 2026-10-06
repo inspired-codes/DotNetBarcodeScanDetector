@@ -66,13 +66,16 @@ Facts the plan relies on:
   - Observable effect, tested: the initial `DetectorData.PreviousInput.DeltaToPreviousTicks` is now `0` instead of the creation timestamp. Detection behaviour is unchanged.
   - **Tests:** `TextInputArgsTests`.
 
-### A5. Externalize timing and buffer limits
+### A5. Externalize timing and buffer limits — DONE
 * **Files:** `DetectorConfig.cs`, `DetectorData.cs`, `GenericScanDetector.cs`
 * **Actions:**
-  - `ThresholdTicks` already has a setter; add a **setter for `ThresholdMillisec`** (currently get-only).
-  - Add `CooldownMillisec` (default 300) and `MaxBufferLength` (default 4096) as static properties alongside the threshold.
-  - Replace the hard-coded `300 * TimeSpan.TicksPerMillisecond` (`GenericScanDetector.cs:54`, `:102`; `DetectorData.cs:36`) and `4096` (`DetectorData.cs:32`).
-  - These stay **static for now**. Per-instance options arrive in C2; do not design the static API as if it were final.
+  - Added a **setter for `ThresholdMillisec`** (it delegates to the existing `ThresholdTicks` setter).
+  - Added `CooldownMillisec` (default 300) and `MaxBufferLength` (default 4096) as static properties, plus an `internal` `CooldownTicks` for the detector code.
+  - Replaced every hard-coded cooldown (`GenericScanDetector`: the scan-completed cooldown and the extension by fast input in cooldown; `DetectorData`: the overflow cooldown) and the `4096` check in `DetectorData.Enqueue`. Nothing in the library hard-codes them any more; the defaults live only in `DetectorConfig`.
+  - **Validation (new, throws `ArgumentOutOfRangeException`):** `ThresholdMillisec` and `CooldownMillisec` reject negative values (`CooldownMillisec = 0` is allowed and disables the cooldown); `MaxBufferLength` rejects values below 1. A rejected set leaves the old value in place. `ThresholdTicks` keeps its existing unvalidated setter so that nothing that worked before starts throwing.
+  - These stay **static for now**. Per-instance options arrive in C2; do not design the static API as if it were final. They are plain static fields read without synchronization; A6 should decide whether that needs to change.
+  - **Tests:** `DetectorConfigLimitsTests` covers defaults, setters, validation, and behaviour at each of the four replaced sites. Mutation-checked: restoring any one hard-coded literal fails at least one test.
+  - The BPMN cooldown annotation now says 300 ms / 4096 chars are the defaults, with the property names. (The task labels "start 300ms cooldown" and "> 4096" in the diagram still show the default numbers.)
 
 ### A6. Thread safety
 * **Files:** `DetectorData.cs`, `GenericScanDetector.cs`

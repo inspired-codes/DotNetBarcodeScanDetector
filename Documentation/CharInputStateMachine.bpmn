@@ -3,7 +3,7 @@
   <bpmn:collaboration id="Collaboration_sl8c47w">
     <bpmn:participant id="Participant_nn7p7bk" name="BarcodeScanDetector" processRef="Process_3bltn64" />
     <bpmn:textAnnotation id="TextAnnotation_cooldown_rules">
-      <bpmn:text>Cooldown: 300ms enforced after successful scan or buffer overflow (caps at 4096 chars). Starts before BarcodeScanned is raised. Extends on fast inputs during cooldown. Discards inputs during cooldown. Exception: the second half of a CR+LF or LF+CR pair (the very next input after the scan's newline) is discarded without extending the cooldown. A newline with nothing buffered (e.g. right after a buffer overflow) raises no event and starts no cooldown of its own.</bpmn:text>
+      <bpmn:text>Cooldown: 300ms (default, DetectorConfig.CooldownMillisec) enforced after successful scan or buffer overflow (caps at 4096 chars by default, DetectorConfig.MaxBufferLength). Starts before BarcodeScanned is raised. Extends on fast inputs during cooldown. Discards inputs during cooldown. Exception: the second half of a CR+LF or LF+CR pair (the very next input after the scan's newline) is discarded without extending the cooldown. A newline with nothing buffered (e.g. right after a buffer overflow) raises no event and starts no cooldown of its own.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_s6e24gm">
       <bpmn:text>queue ignores Enter or Return</bpmn:text>
@@ -289,7 +289,7 @@
         <di:waypoint x="561" y="360" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="TextAnnotation_cooldown_rules_di" bpmnElement="TextAnnotation_cooldown_rules">
-        <dc:Bounds x="140" y="0" width="300" height="170" />
+        <dc:Bounds x="140" y="0" width="340" height="170" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="TextAnnotation_1keh5th_di" bpmnElement="TextAnnotation_s6e24gm">
         <dc:Bounds x="510" y="320" width="100" height="40" />

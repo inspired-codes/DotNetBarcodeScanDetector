@@ -64,7 +64,7 @@ internal sealed class GenericScanDetector
             bool completesNewlinePair = newlineComplement != null && text == newlineComplement;
             if (delta <= ThresholdTicks && !completesNewlinePair)
             {
-                Data.CooldownEndTicks = nowTicks + (300 * TimeSpan.TicksPerMillisecond);
+                Data.CooldownEndTicks = nowTicks + CooldownTicks;
             }
 
             // Discard input and keep the real timestamp so we can accurately measure the next delta
@@ -119,7 +119,7 @@ internal sealed class GenericScanDetector
 
         // start the cooldown before raising the event, so input fed from a handler
         // already runs into it
-        Data.CooldownEndTicks = DateTime.Now.Ticks + (300 * TimeSpan.TicksPerMillisecond);
+        Data.CooldownEndTicks = DateTime.Now.Ticks + CooldownTicks;
         _newlineComplement = NewlineComplement(textInputArgs.Text);
         OnBarcodeScannedEvent(new BarcodeScannedEventArgs(sb.ToString()));
     }
