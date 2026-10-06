@@ -33,6 +33,19 @@ public class TimeBaseTests
     }
 
     [Fact]
+    public void SimulateWithTimestamp_UsesTheCallerTimeBase()
+    {
+        var withCallerTime = new ScanDetectorEngine();
+        withCallerTime.ProcessInput("A", TimeSpan.Zero);
+        withCallerTime.Simulate("B", TimeSpan.FromSeconds(1));                 // allowed
+        Assert.Throws<InvalidOperationException>(() => withCallerTime.Simulate("C"));
+
+        var withOwnClock = new ScanDetectorEngine();
+        withOwnClock.ProcessInput("A");
+        Assert.Throws<InvalidOperationException>(() => withOwnClock.Simulate("B", TimeSpan.Zero));
+    }
+
+    [Fact]
     public void RejectedInput_ChangesNothing()
     {
         var r = new Recorder();

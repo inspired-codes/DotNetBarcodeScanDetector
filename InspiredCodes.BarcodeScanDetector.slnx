@@ -1,9 +1,12 @@
 <Solution>
+  <Project Path="InspiredCodes.BarcodeScanDetector.BlazorPwaDemo/InspiredCodes.BarcodeScanDetector.BlazorPwaDemo.csproj" />
   <Project Path="InspiredCodes.BarcodeScanDetector.Tests/InspiredCodes.BarcodeScanDetector.Tests.csproj" />
   <Project Path="InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj" />
   <Project Path="InspiredCodes.WPF.BarcodeScanDetector.Tests/InspiredCodes.WPF.BarcodeScanDetector.Tests.csproj" />
   <Project Path="InspiredCodes.WPF.BarcodeScanDetector/InspiredCodes.WPF.BarcodeScanDetector.csproj" />
   <Project Path="InspiredCodes.WinForms.BarcodeScanDetector/InspiredCodes.WinForms.BarcodeScanDetector.csproj" />
+  <Project Path="InspiredCodes.Blazor.BarcodeScanDetector.Tests/InspiredCodes.Blazor.BarcodeScanDetector.Tests.csproj" />
+  <Project Path="InspiredCodes.Blazor.BarcodeScanDetector/InspiredCodes.Blazor.BarcodeScanDetector.csproj" />
   <Project Path="InspiredCodes.WinForms.BarcodeScanDetector.Tests/InspiredCodes.WinForms.BarcodeScanDetector.Tests.csproj" />
   <Project Path="InspiredCodes.BarcodeScanDetector.WpfDemo/InspiredCodes.BarcodeScanDetector.WpfDemo.csproj" />
   <Project Path="InspiredCodes.BarcodeScanDetector.WinFormsDemo/InspiredCodes.BarcodeScanDetector.WinFormsDemo.csproj" />

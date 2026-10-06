@@ -65,6 +65,42 @@ public class SimulateTests
     }
 
     [Fact]
+    public void WithTimestamp_IsReportedAtThatTime()
+    {
+        var r = new Recorder();
+
+        r.Engine.Simulate("ABC", Recorder.Ms(1234.5));
+
+        var scan = Assert.Single(r.Events);
+        Assert.Equal("ABC", scan.InputText);
+        Assert.Equal(Recorder.Ms(1234.5), scan.Timestamp);
+    }
+
+    [Theory]
+    [InlineData(100, false)]      // inside the cooldown of the scan at 3 ms
+    [InlineData(303, true)]       // after it
+    public void WithTimestamp_SharesTheCallerTimeline(double simulateAt, bool accepted)
+    {
+        var r = new Recorder();
+        r.Type("ABC", 0);
+        r.Key("\r", 3);
+
+        r.Engine.Simulate("XYZ", Recorder.Ms(simulateAt));
+
+        Assert.Equal(accepted ? new[] { "ABC", "XYZ" } : new[] { "ABC" }, r.Scans);
+    }
+
+    [Fact]
+    public void WithTimestamp_ValidatesLikeTheOwnClockVersion()
+    {
+        var engine = new ScanDetectorEngine();
+
+        Assert.Throws<ArgumentNullException>(() => engine.Simulate(null, TimeSpan.Zero));
+        Assert.Throws<ArgumentException>(() => engine.Simulate("\r\n", TimeSpan.Zero));
+        Assert.Throws<ArgumentException>(() => engine.Simulate("A\rB", TimeSpan.Zero));
+    }
+
+    [Fact]
     public void WithTabTerminator_EndsTheScanWithTab()
     {
         var (engine, scans) = Create(new ScanDetectorOptions { Terminators = ScanTerminators.Tab });

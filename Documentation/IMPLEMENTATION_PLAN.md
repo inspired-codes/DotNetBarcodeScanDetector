@@ -8,8 +8,8 @@
 
 | | |
 |---|---|
-| **Done** | Phase 0 (2.x hardening), Phase 1 (xUnit, no signing, Debug/Release, csproj fixes), Phase 2 (v3 engine `ScanDetectorEngine`, options, terminators, timestamps; 97 core tests, mutation-checked), Phase 3 (WPF & WinForms adapters: `net472; net8.0-windows`, per-engine registration, `handledEventsToo`, WinForms message filter and package) |
-| **Next** | Run the Windows-only tests (below) before building on Phase 3; then Phase 4 (WinUI 3) or Phase 5 (Blazor WASM PWA), which are independent of each other, and Phase 6 (release) |
+| **Done** | Phase 0 (2.x hardening), Phase 1 (xUnit, no signing, Debug/Release, csproj fixes), Phase 2 (v3 engine `ScanDetectorEngine`, options, terminators, timestamps; 97 core tests, mutation-checked), Phase 3 (WPF & WinForms adapters: `net472; net8.0-windows`, per-engine registration, `handledEventsToo`, WinForms message filter and package), Phase 5 (Blazor WebAssembly: JS listener, `BlazorBarcodeScanService`, `<BarcodeScanListener>`, PWA demo; tested on Linux including a real-browser end-to-end run) |
+| **Next** | Windows test runs (planned for Thursday 2026-10-08); then Phase 4 (WinUI 3, needs Windows tooling) and Phase 6 (release) |
 | **Not yet verified (needs Windows)** | core tests on `net48`; the WPF tests (10) and WinForms tests (11) of Phase 3, never run; both demos. On Linux the adapters' real source was exercised against minimal stand-in framework types (20 checks, see 3.4), and everything else was built and tested (`net10.0`; Windows projects compile with `-p:EnableWindowsTargeting=true`). |
 | **Open decisions** | OD-7 (package readme) and OD-8 (authors) for Phase 6; OD-9 (separate 2.0.2) only if needed |
 
@@ -97,6 +97,7 @@ public sealed class ScanDetectorEngine         // OD-1
     public void ProcessInput(string text, TimeSpan timestamp);   // caller's time base
     public void ProcessBatch(IList<KeyInput> inputs);            // caller's time base, one atomic step
     public void Simulate(string barcode);                        // own clock, does not wait
+    public void Simulate(string barcode, TimeSpan timestamp);    // caller's time base (added in Phase 5)
     public void Reset();                                         // also forgets the time base
 }
 
@@ -277,12 +278,28 @@ Decisions: OD-1 to OD-5 as recorded in *Open Decisions*.
 
 ---
 
-## Phase 5: Blazor WebAssembly PWA Adapter & Demo
+## Phase 5: Blazor WebAssembly PWA Adapter & Demo — DONE
 
-* `InspiredCodes.Blazor.BarcodeScanDetector` (`net8.0` RCL): capture-phase JS `keydown` listener recording `event.timeStamp`; batched interop to `ProcessBatch(inputs)` on a terminator or after 100 ms of silence.
-* Timestamps are in the page's time base, so each Blazor detector uses only `ProcessBatch` (OD-3). Batching adds latency to the event, not to the measured key intervals.
-* Scoped DI service `BlazorBarcodeScanService` and a `<BarcodeScanListener>` Razor component.
-* Demo: `InspiredCodes.BarcodeScanDetector.BlazorPwaDemo` (Blazor WASM PWA).
+### 5.1 Library `InspiredCodes.Blazor.BarcodeScanDetector` (`net8.0` Razor class library) — DONE
+* **`wwwroot/barcodeScanListener.js`** (ES module): a `keydown` listener on the whole document in the **capture phase** (so no element can stop it first), recording `event.timeStamp`. `keyText` maps a key to its character, Enter to `\r`, Tab to `\t`, and ignores keys that type nothing (modifiers, arrows, Ctrl/Cmd shortcuts, auto-repeat, IME composition) while keeping AltGr characters. `createBatcher` sends a batch at once after Enter/Tab and otherwise after 100 ms of silence. `start`/`stop`/`now()`; a rejected .NET call is caught so it never becomes an unhandled rejection. It only observes: nothing is prevented or stopped.
+* **`BlazorBarcodeScanService`** (scoped): owns a `ScanDetectorEngine`, imports the module, and feeds each batch to `ProcessBatch` with the browser's timestamps via `[JSInvokable] ProcessKeys(string[] texts, double[] timestamps)` (primitive arrays, so trimming and serialization need nothing special). `StartAsync`/`StopAsync` are counted, a stop that arrives while the listener is still starting stops it once started, and a failed import can be retried. `SimulateAsync(barcode)` reads the browser's `performance.now()` and calls the new core overload `Simulate(barcode, timestamp)` (caller time base), since the engine's own clock would be rejected (OD-3). `BarcodeScanned` is the engine's event (sender: the engine). Disposal is asynchronous only (it calls JavaScript).
+* **`AddBarcodeScanDetector(options => …)`** registers the service with `ScanDetectorOptions`.
+* **`<BarcodeScanListener OnScan="…"/>`**: subscribes and starts the service on first render, stops on dispose (also when disposed while still starting); an exception in `OnScan` goes to Blazor's error handling (`DispatchExceptionAsync`).
+* Package: `GeneratePackageOnBuild`, metadata and icon like the other adapters; the `.nupkg` contains `lib/net8.0`, `staticwebassets/barcodeScanListener.js` and depends on the core and `Microsoft.AspNetCore.Components.Web` 8.0.31.
+* Limitation, documented on the service: detection is only as precise as the browser's timestamps; privacy settings that coarsen timers (e.g. Firefox `privacy.resistFingerprinting`, 100 ms) make scans look like typing.
+
+### 5.2 Demo `InspiredCodes.BarcodeScanDetector.BlazorPwaDemo` (`net10.0` Blazor WebAssembly PWA) — DONE
+* From the empty PWA template: registers the service, renders `<BarcodeScanListener>`, lists the scans with their browser timestamps, has a "Simulate scan (UUIDv7)" button and a text field that shows the keys still reach the focused element.
+
+### 5.3 Tests — DONE, all run on Linux
+* `InspiredCodes.Blazor.BarcodeScanDetector.Tests` (xUnit, `net10.0`, **15 tests**) against a fake `IJSRuntime`/module: start/stop counting, stop while starting, retry after a failed import, batches → scans with exact browser timestamps, gaps measured from the timestamps rather than batch arrival, batches as one timeline, argument validation, own clock rejected, `SimulateAsync` at the browser time and within the cooldown rules, disposal, and the scoped DI registration with options.
+* JavaScript: `js/barcodeScanListener.test.html` (**21 tests**: key mapping, batching with fake and real timers, capture phase, nothing prevented, stop/independence of listeners, no unhandled rejection, `now()` vs `event.timeStamp`), run in headless Chrome by `js/run-js-tests.sh` (or by opening the page in any browser over HTTP).
+* Core: 5 more tests for `Simulate(barcode, timestamp)` (102 in total).
+* **Mutation-checked:** dropping the `.catch`, listening in the bubbling phase, not flushing on Enter (JavaScript), and no start counting, no stop-while-starting handling, no retry after a failed import (C#) each fail at least one test.
+* **End-to-end, real browser (not committed, scratch tool):** the published, trimmed Release build of the demo served locally and driven by headless Chrome over the DevTools protocol with real key events: a fast scan is detected; typing at 150 ms per key is not; a scan into a focused text field is detected and the field still gets the text; the simulate button adds a UUIDv7 scan; timestamps are shown; no page errors. 8/8 checks pass. Still worth doing once by hand with a real scanner.
+
+### 5.4 Solution
+* The library, its tests and the demo are in `InspiredCodes.BarcodeScanDetector.slnx`; the whole solution builds in Debug and Release with 0 errors (the 2 existing WinForms-demo warnings).
 
 ---
 
@@ -296,7 +313,7 @@ Decisions: OD-1 to OD-5 as recorded in *Open Decisions*.
 | Core tests | Linux/macOS: `net10.0`; Windows: `net48` + `net10.0` | `dotnet test InspiredCodes.BarcodeScanDetector.Tests -f net10.0` (Linux) |
 | WPF / WinForms / WinUI tests | Windows | `dotnet test` on each test project |
 | Windows projects compile | Linux | `dotnet build <project> -p:EnableWindowsTargeting=true` |
-| Blazor | any OS + browser | build; run the PWA demo; scan with a real scanner and with the simulator |
+| Blazor | any OS + browser | `dotnet test InspiredCodes.Blazor.BarcodeScanDetector.Tests`; `InspiredCodes.Blazor.BarcodeScanDetector.Tests/js/run-js-tests.sh`; run the PWA demo (`dotnet run --project InspiredCodes.BarcodeScanDetector.BlazorPwaDemo`) and scan with a real scanner and with the simulator |
 | Demos | per platform | simulator (UUIDv7) and a real scanner if available |
 | Packages | any OS | inspect each `.nupkg`: readme (OD-7), icon, version 3.0.0, metadata (OD-8) |
 

@@ -1,0 +1,45 @@
+@* Listens to barcode scans on the whole page while it is rendered; renders nothing itself. *@
+@implements IAsyncDisposable
+@inject BlazorBarcodeScanService ScanService
+
+@code {
+    /// <summary>called for each scan; the component that handles it re-renders afterwards</summary>
+    [Parameter]
+    public EventCallback<BarcodeScannedEventArgs> OnScan { get; set; }
+
+    private bool _listening;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        ScanService.BarcodeScanned += OnBarcodeScanned;
+        // set before awaiting, so a dispose during the start still stops the listener
+        _listening = true;
+        await ScanService.StartAsync();
+    }
+
+    private async void OnBarcodeScanned(object? sender, BarcodeScannedEventArgs e)
+    {
+        try
+        {
+            await InvokeAsync(() => OnScan.InvokeAsync(e));
+        }
+        catch (Exception ex)
+        {
+            // report a failing OnScan handler through the renderer (e.g. an ErrorBoundary)
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ScanService.BarcodeScanned -= OnBarcodeScanned;
+        if (_listening)
+        {
+            _listening = false;
+            await ScanService.StopAsync();
+        }
+    }
+}

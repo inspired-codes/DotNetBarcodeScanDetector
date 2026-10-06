@@ -154,6 +154,23 @@ public sealed class ScanDetectorEngine
     /// <exception cref="InvalidOperationException">when this engine is fed caller timestamps</exception>
     public void Simulate(string barcode)
     {
+        Simulate(barcode, TimeSource.Own, default);
+    }
+
+    /// <summary>
+    /// Like <see cref="Simulate(string)"/>, but at <paramref name="timestamp"/> in the caller's time
+    /// base, for an engine that is fed caller timestamps (for example a simulate button in a browser).
+    /// </summary>
+    /// <exception cref="ArgumentException">when nothing is left after the trailing terminators, or
+    /// when the barcode contains a terminator character</exception>
+    /// <exception cref="InvalidOperationException">when this engine uses its own clock</exception>
+    public void Simulate(string barcode, TimeSpan timestamp)
+    {
+        Simulate(barcode, TimeSource.Caller, timestamp);
+    }
+
+    private void Simulate(string barcode, TimeSource source, TimeSpan timestamp)
+    {
         if (barcode == null)
             throw new ArgumentNullException(nameof(barcode));
 
@@ -168,8 +185,8 @@ public sealed class ScanDetectorEngine
         List<BarcodeScannedEventArgs>? scans = null;
         lock (_sync)
         {
-            UseTimeSource(TimeSource.Own);
-            TimeSpan now = Now();
+            UseTimeSource(source);
+            TimeSpan now = source == TimeSource.Own ? Now() : timestamp;
             foreach (char c in text)
                 Collect(ref scans, Step(c.ToString(), now));
             Collect(ref scans, Step(terminator, now));

@@ -1,0 +1,43 @@
+@page "/"
+@inject BlazorBarcodeScanService ScanService
+
+<PageTitle>Barcode Scan Detector</PageTitle>
+
+<BarcodeScanListener OnScan="OnScan" />
+
+<h1>Barcode Scan Detector</h1>
+
+<p>
+    Scan a barcode anywhere on this page. Keys that arrive less than 32 ms apart and end with Enter
+    count as a scan; typing by hand does not. The detector only listens: the scanner's keys still
+    reach the focused field.
+</p>
+
+<p>
+    <input id="text-field" placeholder="type or scan here" @bind="text" @bind:event="oninput" />
+    <button id="simulate" @onclick="SimulateAsync">Simulate scan (UUIDv7)</button>
+</p>
+
+<h2>Scans</h2>
+@if (scans.Count == 0)
+{
+    <p id="no-scans">No scans yet.</p>
+}
+else
+{
+    <ol id="scans">
+        @foreach (var scan in scans)
+        {
+            <li><code>@scan.InputText</code> at @scan.Timestamp.TotalMilliseconds.ToString("F1") ms</li>
+        }
+    </ol>
+}
+
+@code {
+    private readonly List<BarcodeScannedEventArgs> scans = new();
+    private string text = "";
+
+    private void OnScan(BarcodeScannedEventArgs scan) => scans.Add(scan);
+
+    private Task SimulateAsync() => ScanService.SimulateAsync(Guid.CreateVersion7().ToString());
+}
