@@ -39,12 +39,15 @@ Facts the plan relies on:
   - Change `NewLineRN` from `"\n\r"` to `"\r\n"`; keep recognising `"\n\r"` as a delimiter in `IsLineFeedOrCarriageReturn`.
   - Rewrite `CheckNoCrOrLf` to compare characters directly (`c == '\r' || c == '\n'`) with no per-character string allocation.
 
-### A2. CRLF handling and cooldown ordering (BPMN-aligned)
+### A2. CRLF handling and cooldown ordering (BPMN-aligned) — DONE
 * **File:** `InspiredCodes.BarcodeScanDetector/GenericScanDetector.cs`
 * **Actions:**
-  - In `HandleReturnInput`, set `CooldownEndTicks` **before** raising `OnBarcodeScannedEvent` so a handler that synchronously feeds input sees an active cooldown (currently set after, at line 102).
-  - During cooldown, swallow **only** the immediate complement of the newline that ended the scan (`\n` after `\r`, or `\r` after `\n`) when it arrives within the threshold, **without** extending the cooldown. Every other fast input during cooldown still extends it. Preserve the "scan ended with newline X" marker in `PreviousInput` for this check (the cooldown branch currently overwrites it with an empty-text args).
-  - **This changes documented behaviour, so update the BPMN in the same change** (see D4). Do not describe the old behaviour as "doubling the cooldown": the real effect is a few milliseconds of extra cooldown.
+  - In `HandleReturnInput`, set `CooldownEndTicks` **before** raising `OnBarcodeScannedEvent` so a handler that synchronously feeds input sees an active cooldown (previously set after the event).
+  - During cooldown, swallow **only** the immediate complement of the newline that ended the scan (`\n` after `\r`, or `\r` after `\n`) when it arrives within the threshold, **without** extending the cooldown. Every other fast input during cooldown still extends it.
+  - **Implementation:** the "scan ended with newline X" marker is a private `_newlineComplement` field on `GenericScanDetector`, not stored in `PreviousInput` (the cooldown branch overwrites that with an empty-text args). It is set when a scan completes, consumed and cleared by the very next `ProcessInput` call whether or not that call is in cooldown, and cleared by `Reset()`. A6 must put this field under the same lock as the rest of the state.
+  - **Behaviour change to note:** the 300 ms cooldown is now measured from the moment the scan completes, not from when the `BarcodeScanned` handler returns, so a slow handler no longer pushes the cooldown end later.
+  - The BPMN annotation was updated in the same change (D4, A2 part). The gateway diagram has no separate cooldown branch, so only the annotation text changed. Do not describe the old behaviour as "doubling the cooldown": the real effect was a few milliseconds of extra cooldown.
+  - **Tests:** `CooldownNewlineTests` (wall-clock, threshold widened to 150 ms in the tests). Replace its sleeps with the injected clock in B1/B3.
 
 ### A3. Fix empty-scan event on buffer overflow
 * **Files:** `GenericScanDetector.cs`, `DetectorData.cs`
