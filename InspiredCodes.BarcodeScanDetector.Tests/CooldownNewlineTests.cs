@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 
@@ -18,8 +18,7 @@ namespace InspiredCodes.BarcodeScanDetector.Tests;
 /// +400ms if a fast input at +100ms extended it; probing at +350ms tells the two
 /// apart with ~50ms of slack on either side.
 /// </summary>
-[TestClass()]
-public class CooldownNewlineTests
+public class CooldownNewlineTests : IDisposable
 {
 
     private const int ThresholdMs = 150;
@@ -32,8 +31,7 @@ public class CooldownNewlineTests
     private Action _afterScan;
     private EventHandler<BarcodeScannedEventArgs> _handler;
 
-    [TestInitialize]
-    public void InitializeTest()
+    public CooldownNewlineTests()
     {
         _savedThresholdTicks = DetectorConfig.ThresholdTicks;
         DetectorConfig.ThresholdTicks = ThresholdMs * TimeSpan.TicksPerMillisecond;
@@ -49,17 +47,16 @@ public class CooldownNewlineTests
         ScanDetector.BarcodeScanned += _handler;
     }
 
-    [TestCleanup]
-    public void CleanupTest()
+    public void Dispose()
     {
         ScanDetector.BarcodeScanned -= _handler;
         DetectorConfig.ThresholdTicks = _savedThresholdTicks;
         ScanDetector.Reset();
     }
 
-    [DataTestMethod]
-    [DataRow("\r", "\n")]
-    [DataRow("\n", "\r")]
+    [Theory]
+    [InlineData("\r", "\n")]
+    [InlineData("\n", "\r")]
     public void ComplementOfEndingNewline_DoesNotExtendCooldown(string ending, string complement)
     {
         CompleteScan("ABC", ending);
@@ -67,12 +64,12 @@ public class CooldownNewlineTests
 
         ProbeScan();
 
-        CollectionAssert.AreEqual(new[] { "ABC", "XYZ" }, _scans);
+        Assert.Equal(new[] { "ABC", "XYZ" }, _scans);
     }
 
-    [DataTestMethod]
-    [DataRow("\r")]
-    [DataRow("\n")]
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\n")]
     public void SameNewlineAgain_StillExtendsCooldown(string ending)
     {
         CompleteScan("ABC", ending);
@@ -80,10 +77,10 @@ public class CooldownNewlineTests
 
         ProbeScan();
 
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void OrdinaryFastInput_StillExtendsCooldown()
     {
         CompleteScan("ABC", "\r");
@@ -91,10 +88,10 @@ public class CooldownNewlineTests
 
         ProbeScan();
 
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void OnlyTheFirstComplement_IsSwallowed()
     {
         CompleteScan("ABC", "\r");
@@ -103,10 +100,10 @@ public class CooldownNewlineTests
 
         ProbeScan();
 
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void ComplementAfterOrdinaryInput_IsNotSwallowed()
     {
         CompleteScan("ABC", "\r");
@@ -115,10 +112,10 @@ public class CooldownNewlineTests
 
         ProbeScan();
 
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void InputFedFromHandler_SeesActiveCooldown()
     {
         bool fed = false;
@@ -136,7 +133,7 @@ public class CooldownNewlineTests
 
         // the cooldown is already running while the handler executes, so the
         // handler's own fast input is discarded instead of producing a second scan
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
     private void CompleteScan(string text, string ending)
@@ -144,14 +141,14 @@ public class CooldownNewlineTests
         Feed(text);
         ScanDetector.ProcessInput(ending);
         _sinceScan = Stopwatch.StartNew();
-        Assert.AreEqual(1, _scans.Count, "the scan should have completed immediately");
+        Assert.True(_scans.Count == 1, "the scan should have completed immediately");
     }
 
     private void SendAt(int ms, string input)
     {
         WaitUntil(ms);
         if (_sinceScan.ElapsedMilliseconds > ms + SlackMs)
-            Assert.Inconclusive("test thread was delayed too long for the timing to be meaningful");
+            Assert.Fail("test thread was delayed too long for the timing to be meaningful");
         ScanDetector.ProcessInput(input);
     }
 
@@ -163,7 +160,7 @@ public class CooldownNewlineTests
     {
         WaitUntil(ProbeAtMs);
         if (_sinceScan.ElapsedMilliseconds > ProbeAtMs + SlackMs)
-            Assert.Inconclusive("test thread was delayed too long for the timing to be meaningful");
+            Assert.Fail("test thread was delayed too long for the timing to be meaningful");
         Feed("XYZ");
         ScanDetector.ProcessInput("\r");
     }

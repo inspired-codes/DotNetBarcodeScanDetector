@@ -2,15 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 using InspiredCodes.BarcodeScanDetector.Tests.Mock;
 
 namespace InspiredCodes.BarcodeScanDetector.Tests;
 
-[TestClass()]
-public class ScanDetectorTests
+public class ScanDetectorTests : IDisposable
 {
 
 
@@ -18,20 +17,26 @@ public class ScanDetectorTests
     public Queue<string> PreviewScannedBarcodes { get; set; }
     public Stopwatch Stopwatch { get; set; }
 
-    [TestInitialize]
-    public void InitializeTest()
+    public ScanDetectorTests()
     {
         ScanDetector.Reset();
         Stopwatch = new Stopwatch();
         ScannedBarcodes = new Queue<string>();
         PreviewScannedBarcodes = new Queue<string>();
-    }
-    [TestMethod]
-    public void SimulateFastInputTest()
-    {
 
+        // the detectors are static: every handler added here is removed again in Dispose
         ScanDetector.BarcodeScanned += TextInputHandler;
         ScanDetector.PreviewBarcodeScanned += PreviewTextInputHandler;
+    }
+    public void Dispose()
+    {
+        ScanDetector.BarcodeScanned -= TextInputHandler;
+        ScanDetector.PreviewBarcodeScanned -= PreviewTextInputHandler;
+        ScanDetector.Reset();
+    }
+    [Fact]
+    public void SimulateFastInputTest()
+    {
 
         var barcodes = new SomeBarcodes();
         foreach (string barcode in barcodes.ToArray())
@@ -49,28 +54,26 @@ public class ScanDetectorTests
         {
             result = ScannedBarcodes.Dequeue();
             previewResult = PreviewScannedBarcodes.Dequeue();
-            
-            Assert.AreEqual(barcode, result);
-            Assert.AreEqual(barcode, previewResult);
+
+            Assert.Equal(barcode, result);
+            Assert.Equal(barcode, previewResult);
         }
-        Assert.IsTrue(0 == ScannedBarcodes.Count);
+        Assert.Empty(ScannedBarcodes);
 
 
     }
-    [TestMethod]
+    [Fact]
     public void BufferLimitTest()
     {
-        ScanDetector.BarcodeScanned += TextInputHandler;
-
         // 1. Send a successful scan (under 4096)
         ScanDetector.SimulateBubbleFastInput("OK");
-        Assert.AreEqual(1, ScannedBarcodes.Count);
-        Assert.AreEqual("OK", ScannedBarcodes.Dequeue());
+        Assert.Equal("OK", Assert.Single(ScannedBarcodes));
+        ScannedBarcodes.Clear();
 
         // This successful scan triggers a 300ms cooldown.
         // 2. Send another scan immediately (should be discarded due to cooldown)
         ScanDetector.SimulateBubbleFastInput("FAIL");
-        Assert.AreEqual(0, ScannedBarcodes.Count);
+        Assert.Empty(ScannedBarcodes);
 
         // 3. Wait for 350ms to let cooldown expire
         System.Threading.Thread.Sleep(350);
@@ -78,26 +81,23 @@ public class ScanDetectorTests
         // 4. Send a scan exceeding 4096
         string input = new string('A', 4100);
         ScanDetector.SimulateBubbleFastInput(input);
-        Assert.AreEqual(0, ScannedBarcodes.Count); // Discarded on limit, starts cooldown
+        Assert.Empty(ScannedBarcodes); // Discarded on limit, starts cooldown
 
         // 5. Send a scan during cooldown (extends it)
         ScanDetector.SimulateBubbleFastInput("B");
-        Assert.AreEqual(0, ScannedBarcodes.Count); // Discarded, cooldown extended
+        Assert.Empty(ScannedBarcodes); // Discarded, cooldown extended
 
         // 6. Wait for 150ms (cooldown still active because it was extended)
         System.Threading.Thread.Sleep(150);
         ScanDetector.SimulateBubbleFastInput("C"); // Discarded, cooldown extended again
-        Assert.AreEqual(0, ScannedBarcodes.Count);
+        Assert.Empty(ScannedBarcodes);
 
         // 7. Wait 350ms to let cooldown expire
         System.Threading.Thread.Sleep(350);
 
         // 8. Send a scan now
         ScanDetector.SimulateBubbleFastInput("SUCCESS");
-        Assert.AreEqual(1, ScannedBarcodes.Count);
-        Assert.AreEqual("SUCCESS", ScannedBarcodes.Dequeue());
-
-        ScanDetector.BarcodeScanned -= TextInputHandler;
+        Assert.Equal("SUCCESS", Assert.Single(ScannedBarcodes));
     }
     void TextInputHandler(object sender, BarcodeScannedEventArgs e)
     {

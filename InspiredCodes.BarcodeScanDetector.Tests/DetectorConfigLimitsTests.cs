@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 
@@ -12,8 +12,7 @@ namespace InspiredCodes.BarcodeScanDetector.Tests;
 /// The configurable timing and buffer limits. They are static, so every test
 /// restores them.
 /// </summary>
-[TestClass()]
-public class DetectorConfigLimitsTests
+public class DetectorConfigLimitsTests : IDisposable
 {
 
     private long _savedThresholdTicks;
@@ -22,8 +21,7 @@ public class DetectorConfigLimitsTests
     private List<string> _scans;
     private EventHandler<BarcodeScannedEventArgs> _handler;
 
-    [TestInitialize]
-    public void InitializeTest()
+    public DetectorConfigLimitsTests()
     {
         _savedThresholdTicks = DetectorConfig.ThresholdTicks;
         _savedCooldownMillisec = DetectorConfig.CooldownMillisec;
@@ -35,8 +33,7 @@ public class DetectorConfigLimitsTests
         ScanDetector.BarcodeScanned += _handler;
     }
 
-    [TestCleanup]
-    public void CleanupTest()
+    public void Dispose()
     {
         ScanDetector.BarcodeScanned -= _handler;
         DetectorConfig.ThresholdTicks = _savedThresholdTicks;
@@ -45,73 +42,73 @@ public class DetectorConfigLimitsTests
         ScanDetector.Reset();
     }
 
-    [TestMethod]
+    [Fact]
     public void Defaults_AreTheFormerHardCodedValues()
     {
-        Assert.AreEqual(32, DetectorConfig.ThresholdMillisec);
-        Assert.AreEqual(300, DetectorConfig.CooldownMillisec);
-        Assert.AreEqual(4096, DetectorConfig.MaxBufferLength);
+        Assert.Equal(32, DetectorConfig.ThresholdMillisec);
+        Assert.Equal(300, DetectorConfig.CooldownMillisec);
+        Assert.Equal(4096, DetectorConfig.MaxBufferLength);
     }
 
-    [TestMethod]
+    [Fact]
     public void ThresholdMillisec_Setter_UpdatesThresholdTicks()
     {
         DetectorConfig.ThresholdMillisec = 50;
 
-        Assert.AreEqual(50 * TimeSpan.TicksPerMillisecond, DetectorConfig.ThresholdTicks);
-        Assert.AreEqual(50, DetectorConfig.ThresholdMillisec);
+        Assert.Equal(50 * TimeSpan.TicksPerMillisecond, DetectorConfig.ThresholdTicks);
+        Assert.Equal(50, DetectorConfig.ThresholdMillisec);
     }
 
-    [TestMethod]
+    [Fact]
     public void ThresholdTicks_Setter_UpdatesThresholdMillisec()
     {
         DetectorConfig.ThresholdTicks = 75 * TimeSpan.TicksPerMillisecond;
 
-        Assert.AreEqual(75, DetectorConfig.ThresholdMillisec);
+        Assert.Equal(75, DetectorConfig.ThresholdMillisec);
     }
 
-    [DataTestMethod]
-    [DataRow(-1)]
-    [DataRow(int.MinValue)]
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
     public void ThresholdMillisec_RejectsNegativeValues(int value)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => { DetectorConfig.ThresholdMillisec = value; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { DetectorConfig.ThresholdMillisec = value; });
 
-        Assert.AreEqual(32, DetectorConfig.ThresholdMillisec);
+        Assert.Equal(32, DetectorConfig.ThresholdMillisec);
     }
 
-    [DataTestMethod]
-    [DataRow(-1)]
-    [DataRow(int.MinValue)]
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
     public void CooldownMillisec_RejectsNegativeValues(int value)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => { DetectorConfig.CooldownMillisec = value; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { DetectorConfig.CooldownMillisec = value; });
 
-        Assert.AreEqual(300, DetectorConfig.CooldownMillisec);
+        Assert.Equal(300, DetectorConfig.CooldownMillisec);
     }
 
-    [DataTestMethod]
-    [DataRow(0)]
-    [DataRow(-1)]
-    [DataRow(int.MinValue)]
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
     public void MaxBufferLength_RejectsValuesBelowOne(int value)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => { DetectorConfig.MaxBufferLength = value; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { DetectorConfig.MaxBufferLength = value; });
 
-        Assert.AreEqual(4096, DetectorConfig.MaxBufferLength);
+        Assert.Equal(4096, DetectorConfig.MaxBufferLength);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_AcceptsZero_MeaningNoCooldown()
     {
         DetectorConfig.CooldownMillisec = 0;
 
-        Assert.AreEqual(0, DetectorConfig.CooldownMillisec);
+        Assert.Equal(0, DetectorConfig.CooldownMillisec);
     }
 
-    [DataTestMethod]
-    [DataRow(10, true)]
-    [DataRow(11, false)]
+    [Theory]
+    [InlineData(10, true)]
+    [InlineData(11, false)]
     public void MaxBufferLength_SetsTheLargestAcceptedScan(int length, bool accepted)
     {
         DetectorConfig.MaxBufferLength = 10;
@@ -119,10 +116,10 @@ public class DetectorConfigLimitsTests
         ScanDetector.SimulateBubbleFastInput(new string('A', length));
 
         string[] expected = accepted ? new[] { new string('A', length) } : new string[0];
-        CollectionAssert.AreEqual(expected, _scans);
+        Assert.Equal(expected, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_Zero_AcceptsBackToBackScans()
     {
         DetectorConfig.CooldownMillisec = 0;
@@ -130,10 +127,10 @@ public class DetectorConfigLimitsTests
         ScanDetector.SimulateBubbleFastInput("ONE");
         ScanDetector.SimulateBubbleFastInput("TWO");
 
-        CollectionAssert.AreEqual(new[] { "ONE", "TWO" }, _scans);
+        Assert.Equal(new[] { "ONE", "TWO" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_Shorter_EndsTheCooldownSooner()
     {
         DetectorConfig.CooldownMillisec = 100;
@@ -142,10 +139,10 @@ public class DetectorConfigLimitsTests
         Thread.Sleep(180);  // past 100ms, but well inside the default 300ms
         ScanDetector.SimulateBubbleFastInput("TWO");
 
-        CollectionAssert.AreEqual(new[] { "ONE", "TWO" }, _scans);
+        Assert.Equal(new[] { "ONE", "TWO" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_AppliesToTheCooldownStartedByABufferOverflow()
     {
         DetectorConfig.MaxBufferLength = 10;
@@ -155,10 +152,10 @@ public class DetectorConfigLimitsTests
         Thread.Sleep(180);  // past 100ms, but well inside the default 300ms
         ScanDetector.SimulateBubbleFastInput("TWO");
 
-        CollectionAssert.AreEqual(new[] { "TWO" }, _scans);
+        Assert.Equal(new[] { "TWO" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_AppliesToTheExtensionByFastInputDuringTheCooldown()
     {
         DetectorConfig.CooldownMillisec = 100;
@@ -171,10 +168,10 @@ public class DetectorConfigLimitsTests
             ScanDetector.ProcessInput(c.ToString());
         ScanDetector.ProcessInput("\r");
 
-        CollectionAssert.AreEqual(new[] { "ONE", "XYZ" }, _scans);
+        Assert.Equal(new[] { "ONE", "XYZ" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void CooldownMillisec_Longer_KeepsDiscardingScansLonger()
     {
         DetectorConfig.CooldownMillisec = 600;
@@ -183,7 +180,7 @@ public class DetectorConfigLimitsTests
         Thread.Sleep(350);  // past the default 300ms, but well inside 600ms
         ScanDetector.SimulateBubbleFastInput("TWO");
 
-        CollectionAssert.AreEqual(new[] { "ONE" }, _scans);
+        Assert.Equal(new[] { "ONE" }, _scans);
     }
 
 }

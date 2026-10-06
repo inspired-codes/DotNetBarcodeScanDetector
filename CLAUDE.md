@@ -13,11 +13,11 @@ Only the core library and its tests build and run on Linux/macOS. Every other pr
 ```bash
 dotnet build InspiredCodes.BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.csproj
 
-# core tests (MSTest, net6.0). If only a newer runtime is installed, roll forward:
-DOTNET_ROLL_FORWARD=Major dotnet test InspiredCodes.BarcodeScanDetector.Tests
+# core tests (xUnit, net48 + net10.0). On Linux/macOS run only net10.0: net48 compiles there but can't run
+dotnet test InspiredCodes.BarcodeScanDetector.Tests -f net10.0
 
 # single test
-DOTNET_ROLL_FORWARD=Major dotnet test InspiredCodes.BarcodeScanDetector.Tests --filter "FullyQualifiedName~BufferLimitTest"
+dotnet test InspiredCodes.BarcodeScanDetector.Tests -f net10.0 --filter "FullyQualifiedName~BufferLimitTest"
 
 # Windows only: the WPF / WinForms extension tests (xunit)
 dotnet test InspiredCodes.WPF.BarcodeScanDetector.Tests
@@ -47,6 +47,6 @@ Three layers; the detection logic lives only in the first.
 ## Things that will trip you up
 
 - **Namespace does not match the project.** The core library's types are in `InspiredCodes.WPF.BarcodeScanDetector` even though the core has no WPF dependency, and the WinForms adapter does `using InspiredCodes.WPF.BarcodeScanDetector;`. Core tests import that namespace too. Don't "fix" it in one project without updating the others.
-- **`Documentation/IMPLEMENTATION_PLAN.md` is the single plan (v3.0, multi-platform), not a description of current code.** Phase 0 (hardening of the 2.x engine) is done; Phases 1–6 (xUnit/config cleanups, engine rewrite, WPF/WinForms, WinUI, Blazor WASM PWA, release) are not. Its "Behaviour Contract" (R1–R10) lists rules the current engine already implements and the rewrite must keep, and its "Open Decisions" table lists what must be decided before each phase. Notably, the planned class name `BarcodeScanDetector` does not compile in the adapter namespaces (CS0118). Don't use `Environment.TickCount64` (not available on netstandard2.x).
+- **`Documentation/IMPLEMENTATION_PLAN.md` is the single plan (v3.0, multi-platform), not a description of current code.** Phase 0 (hardening of the 2.x engine) and Phase 1.1 (xUnit migration) are done; the rest of Phases 1–6 (config cleanups, engine rewrite, WPF/WinForms, WinUI, Blazor WASM PWA, release) is not. Its "Behaviour Contract" (R1–R10) lists rules the current engine already implements and the rewrite must keep, and its "Open Decisions" table lists what must be decided before each phase. Notably, the planned class name `BarcodeScanDetector` does not compile in the adapter namespaces (CS0118). Don't use `Environment.TickCount64` (not available on netstandard2.x).
 - **Docs are partly stale.** `InspiredCodes.BarcodeScanDetector/README.md` references a nonexistent `ScanDetector.Register(this)` and an internal Steelcase NuGet feed; the root `README.md` has absolute `file:///c:/Users/...` links. The core csproj packs the root `README.md`, not the one in its own folder, and has a typo `$(AssemlbyVersion)` in `FileVersion`.
-- **Test frameworks differ:** core tests are MSTest with `Nullable` disabled; the WPF and WinForms test projects are xunit and only assert that register/unregister don't throw.
+- **All test projects use xUnit 2 (2.7.0).** The core tests have `Nullable` disabled, and `AssemblyInfo.cs` turns off xUnit's default parallel execution of test classes. Every class drives the same static detector and static config, so with parallelization on, 20 of the 78 tests fail. The WPF and WinForms tests (registration idempotency) have only been compiled, never run on Windows.

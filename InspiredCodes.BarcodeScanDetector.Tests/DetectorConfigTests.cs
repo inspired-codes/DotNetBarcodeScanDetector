@@ -1,66 +1,65 @@
 using System;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 
 namespace InspiredCodes.BarcodeScanDetector.Tests;
 
-[TestClass()]
 public class DetectorConfigTests
 {
 
-    [TestMethod]
+    [Fact]
     public void NewLineRN_IsCarriageReturnThenLineFeed()
     {
-        Assert.AreEqual("\r\n", DetectorConfig.NewLineRN);
+        Assert.Equal("\r\n", DetectorConfig.NewLineRN);
     }
 
-    [DataTestMethod]
-    [DataRow("\r")]
-    [DataRow("\n")]
-    [DataRow("\r\n")]
-    [DataRow("\n\r")]
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\n\r")]
     public void IsLineFeedOrCarriageReturn_AcceptsNewlineSequences(string text)
     {
-        Assert.IsTrue(DetectorConfig.IsLineFeedOrCarriageReturn(text));
+        Assert.True(DetectorConfig.IsLineFeedOrCarriageReturn(text));
     }
 
-    [DataTestMethod]
-    [DataRow("")]
-    [DataRow("A")]
-    [DataRow(" ")]
-    [DataRow("\t")]
-    [DataRow("A\r")]
-    [DataRow("\r\r")]
-    [DataRow("\r\n\r\n")]
+    [Theory]
+    [InlineData("")]
+    [InlineData("A")]
+    [InlineData(" ")]
+    [InlineData("\t")]
+    [InlineData("A\r")]
+    [InlineData("\r\r")]
+    [InlineData("\r\n\r\n")]
     public void IsLineFeedOrCarriageReturn_RejectsEverythingElse(string text)
     {
-        Assert.IsFalse(DetectorConfig.IsLineFeedOrCarriageReturn(text));
+        Assert.False(DetectorConfig.IsLineFeedOrCarriageReturn(text));
     }
 
-    [DataTestMethod]
-    [DataRow("")]
-    [DataRow("A")]
-    [DataRow("1_C04441_R042")]
-    [DataRow("tab\there")]
+    [Theory]
+    [InlineData("")]
+    [InlineData("A")]
+    [InlineData("1_C04441_R042")]
+    [InlineData("tab\there")]
     public void CheckNoCrOrLf_AllowsTextWithoutLineEnds(string text)
     {
         DetectorConfig.CheckNoCrOrLf(text);
     }
 
-    [DataTestMethod]
-    [DataRow("\r")]
-    [DataRow("\n")]
-    [DataRow("\r\n")]
-    [DataRow("ABC\r")]
-    [DataRow("ABC\n")]
-    [DataRow("A\rB")]
-    [DataRow("A\nB")]
-    [DataRow("\rABC")]
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("ABC\r")]
+    [InlineData("ABC\n")]
+    [InlineData("A\rB")]
+    [InlineData("A\nB")]
+    [InlineData("\rABC")]
     public void CheckNoCrOrLf_ThrowsWhenTextContainsLineEnd(string text)
     {
-        Assert.ThrowsException<ArgumentException>(() => DetectorConfig.CheckNoCrOrLf(text));
+        Assert.Throws<ArgumentException>(() => DetectorConfig.CheckNoCrOrLf(text));
     }
 
 }

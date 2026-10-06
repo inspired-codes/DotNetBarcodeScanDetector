@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFrameworks>net48;net10.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>disable</Nullable>
         <LangVersion>14.0</LangVersion>
@@ -22,10 +22,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.4.1" />
-        <PackageReference Include="MSTest.TestAdapter" Version="3.0.1" />
-        <PackageReference Include="MSTest.TestFramework" Version="3.0.1" />
-        <PackageReference Include="coverlet.collector" Version="3.2.0">
+        <!-- same versions as the WPF and WinForms test projects -->
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+        <PackageReference Include="xunit" Version="2.7.0" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="2.5.7">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.collector" Version="6.0.2">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>

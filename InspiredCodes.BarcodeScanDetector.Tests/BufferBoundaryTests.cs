@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 
@@ -12,8 +12,7 @@ namespace InspiredCodes.BarcodeScanDetector.Tests;
 /// Scans around the 4096 character buffer limit, and other cases where a newline
 /// arrives with nothing to report.
 /// </summary>
-[TestClass()]
-public class BufferBoundaryTests
+public class BufferBoundaryTests : IDisposable
 {
 
     private const int MaxLength = 4096;
@@ -21,8 +20,7 @@ public class BufferBoundaryTests
     private List<string> _scans;
     private EventHandler<BarcodeScannedEventArgs> _handler;
 
-    [TestInitialize]
-    public void InitializeTest()
+    public BufferBoundaryTests()
     {
         ScanDetector.Reset();
         _scans = new List<string>();
@@ -30,62 +28,60 @@ public class BufferBoundaryTests
         ScanDetector.BarcodeScanned += _handler;
     }
 
-    [TestCleanup]
-    public void CleanupTest()
+    public void Dispose()
     {
         ScanDetector.BarcodeScanned -= _handler;
         ScanDetector.Reset();
     }
 
-    [TestMethod]
+    [Fact]
     public void ScanAtTheLimit_RaisesOneEventWithAllCharacters()
     {
         ScanDetector.SimulateBubbleFastInput(new string('A', MaxLength));
 
-        Assert.AreEqual(1, _scans.Count);
-        Assert.AreEqual(MaxLength, _scans[0].Length);
+        Assert.Equal(MaxLength, Assert.Single(_scans).Length);
     }
 
-    [DataTestMethod]
-    [DataRow(MaxLength + 1)]
-    [DataRow(MaxLength + 2)]
+    [Theory]
+    [InlineData(MaxLength + 1)]
+    [InlineData(MaxLength + 2)]
     public void ScanOverTheLimit_RaisesNoEvent(int length)
     {
         ScanDetector.SimulateBubbleFastInput(new string('A', length));
 
-        CollectionAssert.AreEqual(new string[0], _scans);
+        Assert.Empty(_scans);
     }
 
-    [DataTestMethod]
-    [DataRow(MaxLength + 1)]
-    [DataRow(MaxLength + 2)]
+    [Theory]
+    [InlineData(MaxLength + 1)]
+    [InlineData(MaxLength + 2)]
     public void ScanOverTheLimit_StartsCooldownThatExpires(int length)
     {
         ScanDetector.SimulateBubbleFastInput(new string('A', length));
 
         // discarded: the overflow started a cooldown
         ScanDetector.SimulateBubbleFastInput("DURING");
-        CollectionAssert.AreEqual(new string[0], _scans);
+        Assert.Empty(_scans);
 
         // the cooldown ends on its own, after which scanning works again
         Thread.Sleep(350);
         ScanDetector.SimulateBubbleFastInput("AFTER");
-        CollectionAssert.AreEqual(new[] { "AFTER" }, _scans);
+        Assert.Equal(new[] { "AFTER" }, _scans);
     }
 
-    [TestMethod]
+    [Fact]
     public void NewlineWithNothingBuffered_RaisesNoEventAndStartsNoCooldown()
     {
         // Enter arrives fast after a reset, with no text before it
         ScanDetector.ProcessInput("\r");
-        CollectionAssert.AreEqual(new string[0], _scans);
+        Assert.Empty(_scans);
 
         // there was no scan, so there must be no cooldown swallowing the next one
         foreach (char c in "ABC")
             ScanDetector.ProcessInput(c.ToString());
         ScanDetector.ProcessInput("\r");
 
-        CollectionAssert.AreEqual(new[] { "ABC" }, _scans);
+        Assert.Equal(new[] { "ABC" }, _scans);
     }
 
 }

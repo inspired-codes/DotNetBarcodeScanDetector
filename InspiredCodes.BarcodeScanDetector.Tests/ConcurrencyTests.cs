@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using InspiredCodes.WPF.BarcodeScanDetector;
 
@@ -14,16 +14,14 @@ namespace InspiredCodes.BarcodeScanDetector.Tests;
 /// Input may arrive from several threads (UI thread, a serial port reader, tests...).
 /// These tests only assert invariants that must hold for every interleaving.
 /// </summary>
-[TestClass()]
-public class ConcurrencyTests
+public class ConcurrencyTests : IDisposable
 {
 
     private long _savedThresholdTicks;
     private ConcurrentQueue<string> _scans;
     private EventHandler<BarcodeScannedEventArgs> _handler;
 
-    [TestInitialize]
-    public void InitializeTest()
+    public ConcurrencyTests()
     {
         _savedThresholdTicks = DetectorConfig.ThresholdTicks;
         // timing must not decide these tests: a stalled thread must not turn fast input into slow input
@@ -35,15 +33,14 @@ public class ConcurrencyTests
         ScanDetector.BarcodeScanned += _handler;
     }
 
-    [TestCleanup]
-    public void CleanupTest()
+    public void Dispose()
     {
         ScanDetector.BarcodeScanned -= _handler;
         DetectorConfig.ThresholdTicks = _savedThresholdTicks;
         ScanDetector.Reset();
     }
 
-    [TestMethod]
+    [Fact]
     public void SimultaneousNewlines_AfterABufferedScan_RaiseExactlyOneEvent()
     {
         const int Workers = 4;
@@ -88,10 +85,10 @@ public class ConcurrencyTests
         }
 
         threads.ForEach(t => t.Join());
-        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures.Take(5)));
+        Assert.True(failures.IsEmpty, string.Join(Environment.NewLine, failures.Take(5)));
     }
 
-    [TestMethod]
+    [Fact]
     public void HandlerRunsOutsideTheDetectorLock()
     {
         bool otherThreadFinished = false;
@@ -116,11 +113,11 @@ public class ConcurrencyTests
             ScanDetector.BarcodeScanned -= feedingHandler;
         }
 
-        Assert.IsTrue(otherThreadFinished,
+        Assert.True(otherThreadFinished,
             "another thread's input was blocked while the handler ran: the event is raised inside the detector lock");
     }
 
-    [TestMethod]
+    [Fact]
     public void ConcurrentInputAndReset_DoNotThrow()
     {
         var failures = new ConcurrentQueue<string>();
@@ -153,7 +150,7 @@ public class ConcurrencyTests
         stop.Set();
         Thread.Sleep(50);
 
-        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures.Take(5)));
+        Assert.True(failures.IsEmpty, string.Join(Environment.NewLine, failures.Take(5)));
     }
 
 }
