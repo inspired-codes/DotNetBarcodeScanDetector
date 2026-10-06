@@ -1,5 +1,5 @@
 using Xunit;
 
-// Every test class drives the same static ScanDetector and the same static DetectorConfig,
-// so test classes must not run in parallel (xUnit's default).
+// FacadeTests drive the process-wide ScanDetector engines, and a few tests use an engine's real
+// clock, so test classes must not run in parallel (xUnit's default).
 [assembly: CollectionBehavior(DisableTestParallelization = true)]

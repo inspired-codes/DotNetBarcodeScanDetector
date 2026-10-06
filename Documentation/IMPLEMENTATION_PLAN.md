@@ -4,6 +4,15 @@
 >
 > Facts marked *(verified)* were reproduced with a build, test or probe program, not just read from the code.
 
+## Status (2026-10-06, branch `ehc-01`)
+
+| | |
+|---|---|
+| **Done** | Phase 0 (2.x hardening), Phase 1 (xUnit, no signing, Debug/Release, csproj fixes), Phase 2 (v3 engine `ScanDetectorEngine`, options, terminators, timestamps; 97 core tests, mutation-checked) |
+| **Next** | Phase 3: WPF & WinForms adapters (TFMs `net472; net8.0-windows`, `UIElement` + `handledEventsToo`, per-engine registration, WinForms message filter and package) |
+| **Not yet verified (needs Windows)** | core tests on `net48`; the WPF and WinForms test projects (written in A7, never run); both demos. Everything else was built and tested on Linux (`net10.0`; Windows projects compile with `-p:EnableWindowsTargeting=true`). |
+| **Open decisions** | OD-7 (package readme) and OD-8 (authors) for Phase 6; OD-9 (separate 2.0.2) only if needed |
+
 ## Decisions Already Made
 
 From the multi-platform plan (authoritative):
@@ -26,11 +35,11 @@ From the hardening work (already implemented, see Phase 0):
 
 | ID | Decision | Blocks | Recommendation |
 |---|---|---|---|
-| **OD-1** | **Name of the instance class.** `BarcodeScanDetector` inside namespace `InspiredCodes.BarcodeScanDetector` fails to compile with **CS0118** ("is a namespace but is used like a type") in the adapters (`InspiredCodes.WPF.BarcodeScanDetector`, `InspiredCodes.WinForms.…`, …) and in any consumer code under an `InspiredCodes.*` namespace *(verified with a scratch build)*. It compiles in `InspiredCodes.BarcodeScanDetector.Tests` and in unrelated namespaces. | Phase 2 | Rename the class (e.g. `KeystrokeScanDetector`, `ScanDetectorEngine`). The alternative, keeping the name and aliasing it in every adapter, pushes the same problem onto consumers. |
-| **OD-2** | **Tab terminator semantics** (`ScanTerminators.Enter` / `Tab`). Undefined: is it a flags enum (Enter *and* Tab)? Does a Tab after CR/LF complete a pair the way R2 does for CR/LF? Does a lone Tab with nothing buffered behave like a lone newline (R4)? | Phase 2 | Flags enum, default `Enter`; Tab follows R4; only CR/LF form pairs (R2). |
-| **OD-3** | **Time bases.** `ProcessInput(text)` uses `Stopwatch`; `ProcessInput(text, timestamp)` and `ProcessBatch` use the caller's clock (JS `event.timeStamp` is milliseconds since page load). | Phase 2 | One detector instance must never mix time bases (document it; optionally throw when it detects a mix). All cooldown arithmetic uses the input's timestamp; no second clock read (the current engine reads the clock again to start cooldowns). A timestamp earlier than the previous one is treated as delta 0. |
-| **OD-4** | **`ScanDetectorOptions` lifetime.** It is a mutable class passed to the constructor. Does the detector see later changes? | Phase 2 | Snapshot (copy and validate) at construction; a running detector never sees half-applied changes, which matches the A6 thread-safety guarantees. |
-| **OD-5** | **`BarcodeScannedEventArgs` timestamp.** Today `TimestampTicks` is wall-clock `DateTime.Now`. v3 has detector-timeline `TimeSpan` timestamps. | Phase 2 | Expose the completion timestamp as `TimeSpan` in the detector's time base; drop `TimestampTicks`. |
+| **OD-1** | **Name of the instance class.** `BarcodeScanDetector` inside namespace `InspiredCodes.BarcodeScanDetector` fails to compile with **CS0118** ("is a namespace but is used like a type") in the adapters (`InspiredCodes.WPF.BarcodeScanDetector`, `InspiredCodes.WinForms.…`, …) and in any consumer code under an `InspiredCodes.*` namespace *(verified with a scratch build)*. It compiles in `InspiredCodes.BarcodeScanDetector.Tests` and in unrelated namespaces. | Phase 2 | **Decided: `ScanDetectorEngine`.** |
+| **OD-2** | **Tab terminator semantics** (`ScanTerminators.Enter` / `Tab`). Undefined: is it a flags enum (Enter *and* Tab)? Does a Tab after CR/LF complete a pair the way R2 does for CR/LF? Does a lone Tab with nothing buffered behave like a lone newline (R4)? | Phase 2 | **Decided (as recommended):** flags enum, default `Enter`; a lone Tab follows R4; only CR/LF form pairs (R2). When a terminator is not selected it is ordinary text. |
+| **OD-3** | **Time bases.** `ProcessInput(text)` uses `Stopwatch`; `ProcessInput(text, timestamp)` and `ProcessBatch` use the caller's clock (JS `event.timeStamp` is milliseconds since page load). | Phase 2 | **Decided (as recommended), with the guard:** an engine fixes its time base on the first input and throws `InvalidOperationException` on a mix until `Reset()`; cooldowns use the input's own timestamp; an earlier timestamp counts as no time passed. |
+| **OD-4** | **`ScanDetectorOptions` lifetime.** It is a mutable class passed to the constructor. Does the detector see later changes? | Phase 2 | **Decided:** snapshot at construction; the setters validate (R7). |
+| **OD-5** | **`BarcodeScannedEventArgs` timestamp.** Today `TimestampTicks` is wall-clock `DateTime.Now`. v3 has detector-timeline `TimeSpan` timestamps. | Phase 2 | **Decided:** `BarcodeScannedEventArgs.Timestamp` (`TimeSpan`, engine time base); `TimestampTicks` dropped. |
 | **OD-6** | **xUnit version.** The existing WPF/WinForms tests use xunit 2.7.0. xUnit 2 has no runtime skip (`Assert.Inconclusive` is used by `CooldownNewlineTests`); xUnit v3 has `Assert.Skip`. | Phase 1 | **Resolved:** xUnit 2 (2.7.0) in all three projects; the timing guards that would need a runtime skip are `Assert.Fail` until Phase 2 removes them with explicit timestamps. |
 | **OD-7** | **Package readme.** The core csproj packs the **root** `README.md`, not `InspiredCodes.BarcodeScanDetector/README.md`. | Phase 6 | Give each package its own short readme, packed from its project folder. |
 | **OD-8** | **Authors metadata.** The multi-platform plan sets `Peter Metz (pmetz@inspired.codes)` everywhere; the core and WPF csproj currently say `Peter Metz (pmetz@inspired.codes), Steven Lee`, and the README credits Steven Lee as contributor. | Phase 6 | Confirm whether Steven Lee stays in `Authors`. |
@@ -58,47 +67,45 @@ Notes:
 - On Linux/macOS the core tests run with `dotnet test -f net10.0` (this also retires the current `DOTNET_ROLL_FORWARD=Major` workaround). On Windows they run under `net48` and `net10.0`.
 - Windows-only projects compile on Linux with `-p:EnableWindowsTargeting=true` *(verified for the current WPF/WinForms projects, tests and demos, all four current Windows TFMs)*, but their tests cannot run there. Re-verify for `net472` and for WinUI (unverified; WinUI may need Windows tooling).
 
-### Public API (`InspiredCodes.BarcodeScanDetector`)
-
-> **OD-1 must be resolved first:** the class name `BarcodeScanDetector` below does not compile where it is needed.
+### Public API (`InspiredCodes.BarcodeScanDetector`) — implemented in Phase 2
 
 ```csharp
-public sealed class ScanDetectorOptions
+[Flags] public enum ScanTerminators { None = 0, Enter = 1, Tab = 2 }   // Enter: \r, \n, \r\n, \n\r; Tab: \t
+
+public sealed class ScanDetectorOptions        // setters validate (R7); engines copy them (OD-4)
 {
-    public TimeSpan InterKeyThreshold { get; set; } = TimeSpan.FromMilliseconds(32);
-    public TimeSpan Cooldown          { get; set; } = TimeSpan.FromMilliseconds(300);
-    public int      MaxLength         { get; set; } = 4096;
-    public ScanTerminators Terminators { get; set; } = ScanTerminators.Enter; // Enter (\r, \n, \r\n) or Tab — see OD-2
+    public TimeSpan InterKeyThreshold { get; set; }   // default 32 ms
+    public TimeSpan Cooldown          { get; set; }   // default 300 ms
+    public int      MaxLength         { get; set; }   // default 4096
+    public ScanTerminators Terminators { get; set; }  // default Enter
 }
 
-public readonly struct KeyInput
+public readonly struct KeyInput { public KeyInput(string text, TimeSpan timestamp); public string Text { get; } public TimeSpan Timestamp { get; } }
+
+public sealed class BarcodeScannedEventArgs : EventArgs
 {
-    public KeyInput(string text, TimeSpan timestamp) { Text = text; Timestamp = timestamp; }
-    public string Text { get; }
-    public TimeSpan Timestamp { get; }
+    public string InputText { get; }      // without the terminator
+    public TimeSpan Timestamp { get; }    // when the terminator arrived, in the engine's time base
 }
 
-public sealed class BarcodeScanDetector   // name: OD-1
+public sealed class ScanDetectorEngine         // OD-1
 {
-    public BarcodeScanDetector(ScanDetectorOptions? options = null);
-    public event EventHandler<BarcodeScannedEventArgs>? BarcodeScanned;
+    public ScanDetectorEngine(ScanDetectorOptions? options = null);
+    public event EventHandler<BarcodeScannedEventArgs>? BarcodeScanned;   // sender: the engine
 
-    public void ProcessInput(string text);
-    public void ProcessInput(string text, TimeSpan timestamp);
-    public void ProcessBatch(IList<KeyInput> inputs);
-    public void Simulate(string barcode);
-    public void Reset();
+    public void ProcessInput(string text);                       // own monotonic clock
+    public void ProcessInput(string text, TimeSpan timestamp);   // caller's time base
+    public void ProcessBatch(IList<KeyInput> inputs);            // caller's time base, one atomic step
+    public void Simulate(string barcode);                        // own clock, does not wait
+    public void Reset();                                         // also forgets the time base
 }
 
-// Static convenience facade for single-window apps
-public static class ScanDetector
+public static class ScanDetector               // facade: two process-wide engines with default options
 {
-    public static BarcodeScanDetector Default { get; }
-    public static BarcodeScanDetector Preview { get; }
-
-    public static event EventHandler<BarcodeScannedEventArgs> BarcodeScanned;
-    public static event EventHandler<BarcodeScannedEventArgs> PreviewBarcodeScanned;
-
+    public static ScanDetectorEngine Default { get; }
+    public static ScanDetectorEngine Preview { get; }
+    public static event EventHandler<BarcodeScannedEventArgs> BarcodeScanned;          // Default's
+    public static event EventHandler<BarcodeScannedEventArgs> PreviewBarcodeScanned;   // Preview's
     public static void ProcessInput(string text);
     public static void ProcessPreviewInput(string text);
     public static void SimulateBubbleFastInput(string barcode);
@@ -109,20 +116,20 @@ public static class ScanDetector
 
 ### Behaviour Contract
 
-The v3 engine is a rewrite. These rules are implemented and tested in the current engine (Phase 0) and **must hold for the new one**; each has tests to port.
+These rules were implemented and tested in the 2.x engine (Phase 0) and hold for the v3 engine (Phase 2), which keeps the same state machine. Every rule is covered by the listed tests, and every rule was mutation-checked (see Phase 2).
 
-| Rule | Behaviour | From | Tests today |
+| Rule | Behaviour | From | Tests |
 |---|---|---|---|
-| R1 | `\r`, `\n`, `\r\n`, `\n\r` are recognised as Enter; validation does not allocate per character. | A1 | `DetectorConfigTests` |
-| R2 | During the cooldown, the **immediate** complement of the newline that ended a scan (`\n` after `\r`, `\r` after `\n`), arriving within the threshold, is discarded **without** extending the cooldown. Only the very next input qualifies. | A2 | `CooldownNewlineTests` |
-| R3 | The cooldown starts **before** `BarcodeScanned` is raised and is measured from scan completion, not from when the handler returns. Input fed from a handler runs into it. | A2 | `CooldownNewlineTests` |
-| R4 | A terminator with **nothing buffered** raises no event and starts no cooldown (e.g. Enter right after `Reset()` or construction). | A3 | `BufferBoundaryTests` |
-| R5 | A scan of exactly `MaxLength` chars is reported; one char more is discarded, raises **no** event (never an empty one) and starts the cooldown. | A3, A5 | `BufferBoundaryTests`, `DetectorConfigLimitsTests` |
-| R6 | During the cooldown, input is discarded; fast input extends the cooldown by the full `Cooldown`; slow input does not. `Cooldown = 0` disables it. | A5 | `DetectorConfigLimitsTests` |
-| R7 | Options validation: threshold and cooldown must not be negative (0 allowed); `MaxLength` ≥ 1; invalid values throw `ArgumentOutOfRangeException`. | A5 | `DetectorConfigLimitsTests` |
+| R1 | `\r`, `\n`, `\r\n`, `\n\r` (each as one input) are Enter, `\t` is Tab; a terminator ends a scan only when it is selected in the options, and any other input is ordinary text. | A1, OD-2 | `TerminatorTests`, `SimulateTests` |
+| R2 | During the cooldown, the **immediate** complement of the newline that ended a scan (`\n` after `\r`, `\r` after `\n`), arriving within the threshold, is discarded **without** extending the cooldown. Only the very next input qualifies. | A2 | `CooldownTests` |
+| R3 | The cooldown starts **before** `BarcodeScanned` is raised and is measured from scan completion, not from when the handler returns. Input fed from a handler runs into it. | A2 | `CooldownTests` |
+| R4 | A terminator with **nothing buffered** raises no event and starts no cooldown (e.g. a fast Enter right after a cooldown, or right after a buffer overflow). In v3 the first input after construction or `Reset()` counts as slow, so that path is gone. | A3 | `TerminatorTests` |
+| R5 | A scan of exactly `MaxLength` chars is reported; one char more is discarded, raises **no** event (never an empty one) and starts the cooldown. | A3, A5 | `BufferLimitTests` |
+| R6 | During the cooldown, input is discarded; fast input extends the cooldown by the full `Cooldown`; slow input does not. `Cooldown = 0` disables it. The cooldown ends exactly `Cooldown` after the scan; a gap of exactly `InterKeyThreshold` still counts as fast. | A5 | `CooldownTests`, `TypingTests` |
+| R7 | Options validation: threshold and cooldown must not be negative (0 allowed); `MaxLength` ≥ 1; invalid values throw `ArgumentOutOfRangeException`; `Terminators` must select Enter, Tab or both. | A5 | `OptionsTests` |
 | R8 | Thread-safe: one lock covers every state transition (`ProcessInput`, `ProcessBatch`, `Reset`); `BarcodeScanned` is raised **after** the lock is released, so handlers may block or call back in. `ProcessBatch` collects completed scans under the lock and raises them afterwards, in order. | A6 | `ConcurrencyTests` |
 | R9 | Registering an adapter twice forwards each input once; one unregister detaches completely. | A7 | WPF/WinForms test projects (never run, see Phase 0) |
-| R10 | The event `sender` is the detector instance (replaces A8, whose `Simulate…(sender, …)` overloads are dropped by the v3 facade; record this in the migration notes). | A8 → v3 | `SenderTests` (rewrite) |
+| R10 | The event `sender` is the detector instance (replaces A8, whose `Simulate…(sender, …)` overloads are dropped by the v3 facade; record this in the migration notes). | A8 → v3 | `EventTests`, `FacadeTests` |
 
 ---
 
@@ -206,31 +213,34 @@ Goal: the toolchain decisions are in place and the **current** engine's 78 core 
 
 ---
 
-## Phase 2: Core Engine Rewrite
+## Phase 2: Core Engine Rewrite — DONE
 
-**Gate:** OD-1 to OD-5 decided.
+Decisions: OD-1 to OD-5 as recorded in *Open Decisions*.
 
-### 2.1 Namespace and public types
-* All core types move from `InspiredCodes.WPF.BarcodeScanDetector` to `InspiredCodes.BarcodeScanDetector`. Type forwarders cannot alias a namespace, so this is a documented break (migration notes in 6.3).
-* Public API as in *Public API* above. `ScanDetector` becomes a `static class`.
-* Public surface review: `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs` become `internal` or disappear; the static `DetectorConfig` is replaced by `ScanDetectorOptions` (OD-4).
+### 2.1 Namespace and public types — DONE
+* All core types are in `InspiredCodes.BarcodeScanDetector`. Public types: `ScanDetectorEngine`, `ScanDetectorOptions`, `ScanTerminators`, `KeyInput`, `BarcodeScannedEventArgs` and the static `ScanDetector` facade (see *Public API*).
+* Removed: `DetectorConfig`, `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs`, `GenericScanDetector` (its successor is `ScanDetectorEngine`, renamed in git).
+* **The state machine is unchanged**: the engine ports the 2.x algorithm step for step (the last input is held back until the next fast input confirms it; the same cooldown, overflow, pair and empty-scan rules), so the BPMN stays valid. What changed is the API, the clock, per-instance options and terminators.
+* Kept compiling (no Phase 3 work): the WPF and WinForms adapters, their tests and both demos now import `InspiredCodes.BarcodeScanDetector`; the WinForms tests no longer widen the static threshold (it no longer exists; their simulated keys are microseconds apart). All Windows projects compile on Linux for all targets, with the same 10 existing warnings.
 
-### 2.2 Timing
-* Monotonic `Stopwatch.GetTimestamp()`, converted with `Stopwatch.Frequency` (its ticks are not 100 ns). `Environment.TickCount64` does **not** exist on `netstandard2.0`/`2.1` *(verified, CS0117)*.
-* `ProcessInput(text, timestamp)` and `ProcessBatch` use the caller's timestamps; every cooldown start and comparison uses the timestamp of the input being processed (OD-3).
-* `Simulate(barcode)` generates synthetic timestamps instead of sleeping. Today's `SimulateFastInput` blocks the calling thread with `Task.Delay(...).Wait()`, which freezes a UI thread.
+### 2.2 Timing — DONE
+* Own clock: `Stopwatch.GetTimestamp()` relative to a process-wide origin, converted with `Stopwatch.Frequency`.
+* Caller timestamps (`ProcessInput(text, timestamp)`, `ProcessBatch`): every comparison and every cooldown start uses the timestamp of the input being processed; there is no second clock read. An earlier timestamp than the previous one counts as no time passed. The first input after construction or `Reset()` has nothing to be fast relative to and counts as slow.
+* Time-base guard (OD-3): an engine fixes its time base on its first input; mixing throws `InvalidOperationException` before any state changes; `Reset()` clears it.
+* `Simulate(barcode)` feeds the barcode and a terminator (`\n`, or `\t` for a Tab-only engine) all at the current time of the own clock. It does not wait (the 2.x version blocked the calling thread with `Task.Delay(...).Wait()`).
+* `ProcessBatch` validates all inputs first (an input without text rejects the whole batch), processes them under one lock acquisition, and raises the completed scans afterwards, in order.
 
-### 2.3 Options and terminators
-* `ScanDetectorOptions` as in *Public API* above, with the R7 validation; snapshot at construction (OD-4).
-* `ScanTerminators` per OD-2.
+### 2.3 Options and terminators — DONE
+* `ScanDetectorOptions` with validating setters (R7) and the snapshot at construction (OD-4); `ScanTerminators` flags per OD-2.
 
-### 2.4 Tests (port the behaviour contract)
-* Port every test listed in the *Behaviour Contract* to the new API. Use **explicit timestamps** instead of `Thread.Sleep`, so cooldown boundaries are asserted exactly and the 50 ms wall-clock margins and runtime-skip guards disappear.
-* Keep the concurrency stress test (R8) unchanged in spirit: N threads, one buffered scan, simultaneous terminators, exactly one event.
-* Add: interleaved typing (fast burst, pause > threshold, fast burst → no event); `ProcessBatch` with several scans in one batch (events in order, raised outside the lock); Tab terminator (OD-2); time-base rules (OD-3).
+### 2.4 Tests — DONE
+* The 78 tests for the 2.x API were replaced by **97 tests** organised by contract rule: `TerminatorTests`, `CooldownTests`, `BufferLimitTests`, `OptionsTests`, `TimeBaseTests`, `BatchTests`, `ConcurrencyTests`, `EventTests`, `FacadeTests`, `SimulateTests`, `TypingTests`, with a `Recorder` helper. They feed explicit timestamps, so cooldown boundaries are asserted exactly and nothing sleeps: the suite runs in about 0.5 s (was 18 s).
+* Every R1–R8/R10 scenario of the old tests was ported; tests of removed types (`DetectorConfig` constants, `TextInputEventArgs`) were dropped with the types. `SimulateFastInputTest`'s real-world barcode list now runs through an engine with no cooldown instead of sleeping 350 ms per barcode.
+* **Mutation-checked, 17 mutations, each fails at least one test:** no lock; event raised inside the lock; batch events inside the lock; no empty-scan guard; pair marker never cleared; complement never swallowed; no cooldown after a scan; no extension by fast input; no overflow cooldown; `MaxLength` off by one; no time-base guard; batch not validated up front; inclusive cooldown end; exclusive threshold; facade `Reset` forgetting `Preview`; terminator kept in the text; Tab never a terminator.
+* Built for `net48` and `net10.0`; run on `net10.0` (Linux). The `net48` run on Windows is still pending (see 1.1).
 
-### 2.5 BPMN
-* Update `Documentation/CharInputStateMachine.bpmn` for v3: option names, terminators, the empty-scan path (R4). The annotation already documents R2, R3, R4 and the configurable defaults.
+### 2.5 BPMN — DONE
+* The cooldown annotation names `ScanDetectorOptions.Cooldown`, `MaxLength` and `Terminators`; the gateways say "terminator key?" and "previous is a terminator?"; the tasks say "> MaxLength" and "start cooldown". The diagram's structure is unchanged because the state machine is. (Not rendered here; check the enlarged annotation in bpmn.io.)
 
 ---
 
@@ -292,7 +302,7 @@ Goal: the toolchain decisions are in place and the **current** engine's 78 core 
 * Consistent package metadata per the decisions above (OD-8).
 
 ### 6.3 Documentation
-* Migration notes 2.x → 3.0: namespace move; `DetectorConfig` → `ScanDetectorOptions`; `ScanDetector` facade changes (instances, dropped `Simulate…(sender, …)` overloads); WPF extension target `IInputElement` → `UIElement`; dropped TFMs (`net6.0`, below `net472`); no strong name; no `Optimized` configuration.
+* Migration notes 2.x → 3.0: namespace move; `DetectorConfig` statics → per-engine `ScanDetectorOptions` (the facade's engines always use the defaults; for other options create a `ScanDetectorEngine`); `ScanDetector` facade changes (`Default`/`Preview` engines, dropped `Simulate…(sender, …)` overloads, the event sender is the engine); `BarcodeScannedEventArgs.TimestampTicks` (wall clock) → `Timestamp` (`TimeSpan`, engine time base); `Simulate…` no longer blocks the calling thread; `ProcessInput(null)` throws; an engine rejects mixing its own clock with caller timestamps; removed public types (`DetectorConfig`, `DetectorData`, `TextInputEventArgs`, `ReturnInputArgs`); WPF extension target `IInputElement` → `UIElement`; dropped TFMs (`net6.0`, below `net472`); no strong name; no `Optimized` configuration.
 * Root `README.md`: replace the absolute `file:///c:/Users/Peter/...` links with repository-relative ones; document all four platforms.
 * `InspiredCodes.BarcodeScanDetector/README.md`: remove the nonexistent `ScanDetector.Register(this)`, the wrong type name `BarcodeScannedArgs`, the stale "needs PresentationCore" claim, and the internal Steelcase feed/push/delete commands and `@since … @steelcase.com` line.
 * State everywhere that the detector **observes** input and never suppresses it.

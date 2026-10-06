@@ -1,5 +1,5 @@
 using System.Windows.Forms;
-using InspiredCodes.WPF.BarcodeScanDetector;
+using InspiredCodes.BarcodeScanDetector;
 
 namespace InspiredCodes.WinForms.BarcodeScanDetector;
 

@@ -1,25 +1,21 @@
 using System.Windows.Forms;
-using InspiredCodes.WPF.BarcodeScanDetector;
+using InspiredCodes.BarcodeScanDetector;
 using Xunit;
 
 namespace InspiredCodes.WinForms.BarcodeScanDetector.Tests;
 
 /// <summary>
-/// The detector behind the extensions is static, so every test starts from a reset detector,
-/// widens the fast-input threshold (typing is simulated, timing must not matter) and puts
-/// everything back afterwards.
+/// The detector behind the extensions is static, so every test starts from a reset detector and
+/// unsubscribes afterwards. The simulated keys are pressed microseconds apart, well inside the
+/// default 32 ms threshold.
 /// </summary>
 public class WinFormsScanDetectorExtensionsTests : IDisposable
 {
-    private readonly long _savedThresholdTicks;
     private readonly List<string> _scans = new();
     private readonly EventHandler<BarcodeScannedEventArgs> _handler;
 
     public WinFormsScanDetectorExtensionsTests()
     {
-        _savedThresholdTicks = DetectorConfig.ThresholdTicks;
-        DetectorConfig.ThresholdMillisec = 1000;
-
         ScanDetector.Reset();
         _handler = (sender, e) => _scans.Add(e.InputText);
         ScanDetector.BarcodeScanned += _handler;
@@ -28,7 +24,6 @@ public class WinFormsScanDetectorExtensionsTests : IDisposable
     public void Dispose()
     {
         ScanDetector.BarcodeScanned -= _handler;
-        DetectorConfig.ThresholdTicks = _savedThresholdTicks;
         ScanDetector.Reset();
     }
 
