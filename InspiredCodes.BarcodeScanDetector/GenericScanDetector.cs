@@ -111,6 +111,12 @@ internal sealed class GenericScanDetector
         for (int i = 0; i < arr.Length; i++)
             sb.Append(arr[i].Text);
 
+        // Nothing to report: either the buffer overflowed on the last character (the
+        // overflow already started the cooldown), or the newline came with no text
+        // before it. Neither is a scan, so no event and no scan-completed cooldown.
+        if (sb.Length == 0)
+            return;
+
         // start the cooldown before raising the event, so input fed from a handler
         // already runs into it
         Data.CooldownEndTicks = DateTime.Now.Ticks + (300 * TimeSpan.TicksPerMillisecond);

@@ -49,11 +49,14 @@ Facts the plan relies on:
   - The BPMN annotation was updated in the same change (D4, A2 part). The gateway diagram has no separate cooldown branch, so only the annotation text changed. Do not describe the old behaviour as "doubling the cooldown": the real effect was a few milliseconds of extra cooldown.
   - **Tests:** `CooldownNewlineTests` (wall-clock, threshold widened to 150 ms in the tests). Replace its sleeps with the injected clock in B1/B3.
 
-### A3. Fix empty-scan event on buffer overflow
-* **Files:** `GenericScanDetector.cs`, `DetectorData.cs`
+### A3. Fix empty-scan event on buffer overflow — DONE
+* **Files:** `GenericScanDetector.cs` (only; `DetectorData.cs` needed no change)
 * **Actions:**
-  - In `HandleReturnInput`, do not raise `BarcodeScanned` when the assembled text is empty (covers the overflow-at-newline case). The cooldown already set by the overflow stays in force.
-  - Add boundary regression tests (see B3): 4096 → one event; 4097 → no event + cooldown; 4098 → no event.
+  - In `HandleReturnInput`, return early when the assembled text is empty, before the cooldown/newline-complement bookkeeping and before raising `BarcodeScanned`. The cooldown already set by the overflow in `DetectorData.Enqueue` stays in force.
+  - The same guard fixes a **second** empty-event path found while testing: a fast newline with nothing buffered (e.g. Enter within the threshold of `Reset()`, or of detector construction) used to raise an empty `BarcodeScanned` *and* start a 300 ms cooldown that swallowed the next real scan. Now it raises nothing and starts no cooldown.
+  - Semantics: only a completed scan starts the scan-completed cooldown (and sets the A2 newline-complement marker). For an over-limit scan ending in CRLF the overflow's cooldown applies and the trailing LF extends it by the CR→LF gap, exactly like any other fast input during a cooldown.
+  - **Tests:** `BufferBoundaryTests`: 4096 → one event with all characters; 4097 and 4098 → no event, the cooldown discards the next scan and then expires; lone newline → no event, no cooldown. (`BufferLimitTest` with 4100 chars stays as it is.)
+  - The BPMN cooldown annotation was updated (D4, A3 part).
 
 ### A4. Correct timestamp/delta argument usage
 * **Files:** `TextInputArgs.cs`, `GenericScanDetector.cs`, `DetectorData.cs`
@@ -113,7 +116,7 @@ Facts the plan relies on:
 * **Actions (using the injected clock, not `Thread.Sleep`):**
   - **CR-only scan** and **CRLF scan**: one event; the trailing `\n` does not extend the cooldown (A2); a different fast input during cooldown still extends it.
   - **Interleaved typing**: fast burst, pause > threshold, fast burst → no event, queue reset.
-  - **Buffer boundaries**: 4096 → one event; 4097 → **no** event and an active cooldown (A3 regression); 4098 → no event. *(`BufferLimitTest` already covers 4100 chars; keep it.)*
+  - **Buffer boundaries**: done in A3 (`BufferBoundaryTests`, wall-clock based). In B3 only switch its cooldown-expiry sleeps to the injected clock.
   - **Handler re-entrancy**: a handler that feeds input during the event observes an active cooldown (A2), and does not deadlock (A6).
   - **Idempotent registration** (Windows only): `MockInputElement` (WPF tests) and a `Control` (WinForms tests) registered twice must forward each input **once**. Assert through the facade, not just "does not throw".
 * **Note:** the facade's `SimulateFastInput` strips CR/LF and always sends a single `\n`; CR/CRLF tests must call `ProcessInput` directly.
