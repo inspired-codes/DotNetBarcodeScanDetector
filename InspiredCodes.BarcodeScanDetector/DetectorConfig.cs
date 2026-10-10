@@ -9,7 +9,7 @@ public class DetectorConfig
     public static readonly char NewLineCharR = '\r';
     public static readonly string NewLineN = "\n";
     public static readonly string NewLineR = "\r";
-    public static readonly string NewLineRN = "\n\r";
+    public static readonly string NewLineRN = "\r\n";
 
     public static int ThresholdMillisec => (int)(ThresholdTicks / TimeSpan.TicksPerMillisecond);
     public static long ThresholdTicks { get; set; } = 32 * TimeSpan.TicksPerMillisecond;

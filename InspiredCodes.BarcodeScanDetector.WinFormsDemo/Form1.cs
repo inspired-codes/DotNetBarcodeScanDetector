@@ -8,8 +8,8 @@ namespace InspiredCodes.BarcodeScanDetector.WinFormsDemo;
 
 public partial class Form1 : Form
 {
-    private Label resultLabel;
-    private Button simulateButton;
+    private Label resultLabel = null!;
+    private Button simulateButton = null!;
 
     public Form1()
     {

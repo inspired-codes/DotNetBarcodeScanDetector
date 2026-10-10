@@ -10,6 +10,8 @@ internal sealed class GenericScanDetector
 {
     public event EventHandler<BarcodeScannedEventArgs>? BarcodeScanned;
 
+    private readonly object _syncRoot = new object();
+
     private void OnBarcodeScannedEvent(BarcodeScannedEventArgs args)
     {
         BarcodeScanned?.Invoke(null, args);
@@ -37,51 +39,66 @@ internal sealed class GenericScanDetector
         for (int i = 0; i < textInput.Length; i++)
             ProcessInput(textInput[i].ToString());
 
-        Task.Delay(ThresholdMillisec / thresholdDivider).Wait();
+        // Removed the Task.Delay here to prevent Windows timer jitter from artificially pushing 
+        // the newline event past the 32ms ThresholdTicks, which was discarding the entire scan.
         ProcessInput(NewLineN);
     }
+
     public void ProcessInput(string text)
     {
-        long nowTicks = DateTime.Now.Ticks;
-        long delta = nowTicks - Data.PreviousInput.TimestampTicks;
-        TextInputEventArgs textInputArgs = new TextInputEventArgs(text, delta);
-
-        if (nowTicks < Data.CooldownEndTicks)
+        lock (_syncRoot)
         {
-            // If it's a fast input, extend the cooldown
-            if (delta <= ThresholdTicks)
+            long nowTicks = DateTime.Now.Ticks;
+            long delta = nowTicks - Data.PreviousInput.TimestampTicks;
+            TextInputEventArgs textInputArgs = new TextInputEventArgs(text, nowTicks, delta);
+
+            if (nowTicks < Data.CooldownEndTicks)
             {
-                Data.CooldownEndTicks = nowTicks + (300 * TimeSpan.TicksPerMillisecond);
+                // Special case: if we just processed '\r' and started a cooldown,
+                // ignore the subsequent '\n' from a "\r\n" CRLF pair without extending the cooldown.
+                if (text == "\n" && Data.PreviousInput.Text == "\r")
+                {
+                    Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks, delta);
+                    return;
+                }
+
+                // If it's a fast input during an active cooldown, extend the cooldown
+                if (delta <= ThresholdTicks)
+                {
+                    Data.CooldownEndTicks = nowTicks + (300 * TimeSpan.TicksPerMillisecond);
+                }
+
+                // Discard input and keep the real timestamp so we can accurately measure the next delta
+                Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks, delta);
+                Data.ClearQueue();
+                return;
             }
 
-            // Discard input and keep the real timestamp so we can accurately measure the next delta
-            Data.PreviousInput = new TextInputEventArgs(string.Empty, nowTicks);
-            Data.ClearQueue();
-            return;
-        }
+            // slow
+            if (ThresholdTicks < delta)
+            {
+                Data.PreviousInput = textInputArgs;
+                Data.ClearQueue();
+                return;
+            }
 
-        // slow
-        if (ThresholdTicks < delta)
-        {
-            Data.PreviousInput = textInputArgs;
-            Data.ClearQueue();
-            return;
+            // fast
+            HandleFastInput(textInputArgs);
         }
-
-        // fast
-        HandleFastInput(textInputArgs);
     }
+
     private void HandleFastInput(TextInputEventArgs textInputArgs)
     {
         if (IsLineFeedOrCarriageReturn(textInputArgs.Text))
         {
-            HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks));
+            HandleReturnInput(new ReturnInputArgs(textInputArgs.Text, textInputArgs.TimestampTicks, textInputArgs.DeltaToPreviousTicks));
             return;
         }
 
         Data.Enqueue(Data.PreviousInput);
         Data.PreviousInput = textInputArgs;
     }
+
     private void HandleReturnInput(ReturnInputArgs textInputArgs)
     {
         if (IsLineFeedOrCarriageReturn(Data.PreviousInput.Text))
@@ -101,27 +118,14 @@ internal sealed class GenericScanDetector
         OnBarcodeScannedEvent(new BarcodeScannedEventArgs(sb.ToString()));
         Data.CooldownEndTicks = DateTime.Now.Ticks + (300 * TimeSpan.TicksPerMillisecond);
     }
-    //private void TextInputHandler(object _, string textInput)
-    //{
-    //    long delta = DateTime.Now.Ticks - Data.PreviousInput.TimestampTicks;
-    //    TextInputEventArgs textInputArgs = new TextInputEventArgs(textInput, delta);
 
-    //    // slow
-    //    if (ThresholdTicks < delta)
-    //    {
-    //        Data.PreviousInput = textInputArgs;
-    //        Data.ClearQueue();
-    //        return;
-    //    }
-
-    //    // fast
-    //    HandleFastInput(textInputArgs);
-
-    //}
     public void Reset()
     {
-        Data.ClearQueue();
-        Data.CooldownEndTicks = 0;
-        Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks);
+        lock (_syncRoot)
+        {
+            Data.ClearQueue();
+            Data.CooldownEndTicks = 0;
+            Data.PreviousInput = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks, 0);
+        }
     }
 }

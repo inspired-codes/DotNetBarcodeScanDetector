@@ -13,7 +13,7 @@ public class DetectorData
 
     public long CooldownEndTicks { get; set; }
 
-    public TextInputEventArgs PreviousInput { get; set; } = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks);
+    public TextInputEventArgs PreviousInput { get; set; } = new TextInputEventArgs(string.Empty, DateTime.Now.Ticks, 0);
 
     public void ClearQueue()
     {

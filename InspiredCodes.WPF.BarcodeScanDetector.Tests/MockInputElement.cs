@@ -5,8 +5,8 @@ namespace InspiredCodes.WPF.BarcodeScanDetector.Tests;
 
 public class MockInputElement : IInputElement
 {
-    public event TextCompositionEventHandler TextInput;
-    public event TextCompositionEventHandler PreviewTextInput;
+    public event TextCompositionEventHandler? TextInput;
+    public event TextCompositionEventHandler? PreviewTextInput;
 
     public void RaiseTextInput(TextCompositionEventArgs e) => TextInput?.Invoke(this, e);
     public void RaisePreviewTextInput(TextCompositionEventArgs e) => PreviewTextInput?.Invoke(this, e);
