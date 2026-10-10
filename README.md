@@ -14,12 +14,16 @@ The solution is split into separate projects for a clean, decoupled architecture
     *   A wrapper that hooks into WPF's `TextInput` and `PreviewTextInput` events for easy registration.
 *   **[InspiredCodes.WinForms.BarcodeScanDetector](file:///c:/Users/Peter/Source/Repos/BarcodeScanDetector/InspiredCodes.WinForms.BarcodeScanDetector)** (WinForms Extensions)
     *   A wrapper that hooks into Windows Forms' `KeyPress` events.
+*   **[InspiredCodes.Blazor.BarcodeScanDetector](file:///c:/Users/Peter/Source/Repos/BarcodeScanDetector/InspiredCodes.Blazor.BarcodeScanDetector)** (Blazor Extensions)
+    *   A wrapper that provides a `BarcodeScanListener` component and `BlazorBarcodeScanService` for Blazor WebAssembly applications.
 *   **[InspiredCodes.BarcodeScanDetector.WpfDemo](file:///c:/Users/Peter/Source/Repos/BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.WpfDemo)**
     *   A simple WPF demo application showcasing scan listening and debugging with a UUIDv7 fast input simulator.
 *   **[InspiredCodes.BarcodeScanDetector.WinFormsDemo](file:///c:/Users/Peter/Source/Repos/BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.WinFormsDemo)**
     *   A simple WinForms demo application demonstrating scan listening and a UUIDv7 fast input simulator.
+*   **[InspiredCodes.BarcodeScanDetector.BlazorPwaDemo](file:///c:/Users/Peter/Source/Repos/BarcodeScanDetector/InspiredCodes.BarcodeScanDetector.BlazorPwaDemo)**
+    *   A Blazor WebAssembly PWA demo application showcasing barcode scan interception within a web browser.
 *   **Tests Projects**
-    *   `InspiredCodes.BarcodeScanDetector.Tests`, `InspiredCodes.WPF.BarcodeScanDetector.Tests`, and `InspiredCodes.WinForms.BarcodeScanDetector.Tests` cover the core logic, event registrations, and the 4096-character cooldown limits.
+    *   `InspiredCodes.BarcodeScanDetector.Tests`, `InspiredCodes.WPF.BarcodeScanDetector.Tests`, `InspiredCodes.WinForms.BarcodeScanDetector.Tests`, and `InspiredCodes.Blazor.BarcodeScanDetector.Tests` cover the core logic, event registrations, and the 4096-character cooldown limits.
 
 ---
 
