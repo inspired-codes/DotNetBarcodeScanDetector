@@ -17,10 +17,18 @@
     <Description>WPF extensions for the Barcode Scan Detector</Description>
     <Copyright>Inspired Codes 2026</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\InspiredCodes.BarcodeScanDetector\InspiredCodes.BarcodeScanDetector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>
