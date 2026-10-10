@@ -6,18 +6,15 @@
         <Nullable>enable</Nullable>
         <LangVersion>14.0</LangVersion>
 
-        <Configurations>Debug;Optimized</Configurations>
-
         <AssemblyVersion>2.0.1.0</AssemblyVersion>
-        <SignAssembly>True</SignAssembly>
-        <FileVersion>$(AssemlbyVersion)</FileVersion>
+        <FileVersion>$(AssemblyVersion)</FileVersion>
         <ApplicationIcon>barcode_detector.ico</ApplicationIcon>
         
         <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
         <Version>2.0.1</Version>
         <PackageIcon>barcode_detector.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageReleaseNotes>removed netstandard,  supports net6.0-windows and net48  as there is a dependency to WPF</PackageReleaseNotes>
+        <PackageReleaseNotes>Core detector without UI dependencies: targets netstandard2.0 and netstandard2.1. WPF and WinForms integration is provided by separate adapter projects.</PackageReleaseNotes>
         
         <Authors>Peter Metz (pmetz@inspired.codes), Steven Lee</Authors>
         <Product>Barcode Scan Detector</Product>
@@ -34,17 +31,6 @@
         <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
         <PathMap>$(AppOutputBase)=InspiredCodes.BarcodeScanDetector</PathMap>
         
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <DebugType>full</DebugType>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)'=='Optimized'">
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <DefineConstants>TRACE</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>

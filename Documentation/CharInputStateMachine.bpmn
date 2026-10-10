@@ -3,10 +3,10 @@
   <bpmn:collaboration id="Collaboration_sl8c47w">
     <bpmn:participant id="Participant_nn7p7bk" name="BarcodeScanDetector" processRef="Process_3bltn64" />
     <bpmn:textAnnotation id="TextAnnotation_cooldown_rules">
-      <bpmn:text>Cooldown: 300ms enforced after successful scan or buffer overflow (caps at 4096 chars). Extends on fast inputs during cooldown. Discards inputs during cooldown.</bpmn:text>
+      <bpmn:text>Cooldown (ScanDetectorOptions.Cooldown, default 300 ms) after a successful scan or a buffer overflow (more than ScanDetectorOptions.MaxLength characters, default 4096). Starts before BarcodeScanned is raised. Inputs during the cooldown are discarded; fast ones extend it. Exception: the second half of a CR+LF or LF+CR pair (the very next input after the scan's newline) is discarded without extending the cooldown. Terminators (ScanDetectorOptions.Terminators): Enter (\r, \n, \r\n, \n\r) and/or Tab; only CR/LF form pairs. A terminator with nothing buffered (e.g. right after a buffer overflow) raises no event and starts no cooldown of its own.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_s6e24gm">
-      <bpmn:text>queue ignores Enter or Return</bpmn:text>
+      <bpmn:text>queue ignores terminators</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:association id="Association_cooldown" sourceRef="Event_q543l80" targetRef="TextAnnotation_cooldown_rules" />
     <bpmn:association id="Association_w8gbxef" sourceRef="Activity_2p8w2uy" targetRef="TextAnnotation_s6e24gm" />
@@ -38,21 +38,21 @@
     <bpmn:endEvent id="Event_b4pigmn" name="waiting for next&#10;(queue empty)">
       <bpmn:incoming>Flow_7gze084</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:exclusiveGateway id="Gateway_40xtuxd" name="enter or return key?">
+    <bpmn:exclusiveGateway id="Gateway_40xtuxd" name="terminator key?">
       <bpmn:incoming>Flow_cx2b5ms</bpmn:incoming>
       <bpmn:outgoing>Flow_2pmpxqv</bpmn:outgoing>
       <bpmn:outgoing>Flow_rymxajw</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="Gateway_0ob9iz5" name="previous is enter or return?">
+    <bpmn:exclusiveGateway id="Gateway_0ob9iz5" name="previous is a terminator?">
       <bpmn:incoming>Flow_rymxajw</bpmn:incoming>
       <bpmn:outgoing>Flow_beyncd2</bpmn:outgoing>
       <bpmn:outgoing>Flow_2ty8vd5</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:scriptTask id="Activity_k90o1ft" name="enqueue previous&#10;(clear queue &#38; start cooldown if &#62; 4096)">
+    <bpmn:scriptTask id="Activity_k90o1ft" name="enqueue previous&#10;(clear queue &#38; start cooldown if &#62; MaxLength)">
       <bpmn:incoming>Flow_beyncd2</bpmn:incoming>
       <bpmn:outgoing>Flow_p4g8s1c</bpmn:outgoing>
     </bpmn:scriptTask>
-    <bpmn:scriptTask id="Activity_2p8w2uy" name="enqueue previous &#10;(clear queue &#38; start cooldown if &#62; 4096)">
+    <bpmn:scriptTask id="Activity_2p8w2uy" name="enqueue previous &#10;(clear queue &#38; start cooldown if &#62; MaxLength)">
       <bpmn:incoming>Flow_2pmpxqv</bpmn:incoming>
       <bpmn:outgoing>Flow_4tni95c</bpmn:outgoing>
     </bpmn:scriptTask>
@@ -68,7 +68,7 @@
       <bpmn:incoming>Flow_m6z6sfz</bpmn:incoming>
       <bpmn:outgoing>Flow_t1ibxpq</bpmn:outgoing>
     </bpmn:scriptTask>
-    <bpmn:scriptTask id="Activity_58cdkaq" name="clear queue&#10;(start 300ms cooldown)">
+    <bpmn:scriptTask id="Activity_58cdkaq" name="clear queue&#10;(start cooldown)">
       <bpmn:incoming>Flow_3yvuvvx</bpmn:incoming>
       <bpmn:outgoing>Flow_os0p9pd</bpmn:outgoing>
     </bpmn:scriptTask>
@@ -289,7 +289,7 @@
         <di:waypoint x="561" y="360" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="TextAnnotation_cooldown_rules_di" bpmnElement="TextAnnotation_cooldown_rules">
-        <dc:Bounds x="140" y="80" width="220" height="90" />
+        <dc:Bounds x="140" y="0" width="420" height="170" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="TextAnnotation_1keh5th_di" bpmnElement="TextAnnotation_s6e24gm">
         <dc:Bounds x="510" y="320" width="100" height="40" />

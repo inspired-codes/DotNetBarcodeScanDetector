@@ -1,8 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFrameworks>net472;net8.0-windows</TargetFrameworks>
-    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>14.0</LangVersion>
@@ -13,13 +12,20 @@
     <Version>2.0.1</Version>
     <Authors>Peter Metz (pmetz@inspired.codes), Steven Lee</Authors>
     <Company>Inspired Codes</Company>
-    <Product>WinForms Barcode Scan Detector Extensions</Product>
-    <Description>Windows Forms extensions for the Barcode Scan Detector</Description>
+    <Product>Blazor Barcode Scan Detector Extensions</Product>
+    <Description>Blazor WebAssembly extensions for the Barcode Scan Detector</Description>
     <Copyright>Inspired Codes 2026</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>barcode_detector.png</PackageIcon>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="8.0.31" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\InspiredCodes.BarcodeScanDetector\InspiredCodes.BarcodeScanDetector.csproj" />
@@ -29,10 +35,6 @@
     <None Include="..\InspiredCodes.BarcodeScanDetector\barcode_detector.png">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
-    </None>
-    <None Include="..\README.md">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
 

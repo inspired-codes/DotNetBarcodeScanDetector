@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net48;net10.0-windows</TargetFrameworks>
-    <UseWPF>true</UseWPF>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>14.0</LangVersion>
@@ -10,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- same versions as the other test projects -->
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
     <PackageReference Include="xunit" Version="2.7.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.7">
@@ -20,10 +20,16 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\InspiredCodes.WPF.BarcodeScanDetector\InspiredCodes.WPF.BarcodeScanDetector.csproj" />
+    <ProjectReference Include="..\InspiredCodes.Blazor.BarcodeScanDetector\InspiredCodes.Blazor.BarcodeScanDetector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the JavaScript tests run in a browser, see js/run-js-tests.sh -->
+    <None Remove="js\**" />
   </ItemGroup>
 
 </Project>

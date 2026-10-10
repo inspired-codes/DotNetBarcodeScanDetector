@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using InspiredCodes.WinForms.BarcodeScanDetector;
-using InspiredCodes.WPF.BarcodeScanDetector; // Core logic uses this namespace for events
 
 namespace InspiredCodes.BarcodeScanDetector.WinFormsDemo;
 

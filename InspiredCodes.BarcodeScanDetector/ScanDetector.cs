@@ -1,49 +1,50 @@
-namespace InspiredCodes.WPF.BarcodeScanDetector;
+using System;
 
-public class ScanDetector
+namespace InspiredCodes.BarcodeScanDetector;
+
+/// <summary>
+/// Convenience facade for single-window apps: two process-wide engines with default options,
+/// <see cref="Default"/> for the bubbling input path (TextInput, KeyPress) and <see cref="Preview"/>
+/// for the tunnelling one (PreviewTextInput). For other options, or one engine per window or
+/// device, create a <see cref="ScanDetectorEngine"/>.
+/// </summary>
+public static class ScanDetector
 {
 
-    private static readonly GenericScanDetector PreviewTextInputDetector = new GenericScanDetector();
-    private static readonly GenericScanDetector TextInputDetector = new GenericScanDetector();
+    public static ScanDetectorEngine Default { get; } = new ScanDetectorEngine();
+    public static ScanDetectorEngine Preview { get; } = new ScanDetectorEngine();
 
-
+    /// <summary>raised by <see cref="Default"/>; the sender is that engine</summary>
     public static event EventHandler<BarcodeScannedEventArgs> BarcodeScanned
     {
-        add { TextInputDetector.BarcodeScanned += value; }
-        remove { TextInputDetector.BarcodeScanned -= value; }
+        add { Default.BarcodeScanned += value; }
+        remove { Default.BarcodeScanned -= value; }
     }
+    /// <summary>raised by <see cref="Preview"/>; the sender is that engine</summary>
     public static event EventHandler<BarcodeScannedEventArgs> PreviewBarcodeScanned
     {
-        add { PreviewTextInputDetector.BarcodeScanned += value; }
-        remove { PreviewTextInputDetector.BarcodeScanned -= value; }
-    }
-    public static void ProcessPreviewInput(string text)
-    {
-        PreviewTextInputDetector.ProcessInput(text);
+        add { Preview.BarcodeScanned += value; }
+        remove { Preview.BarcodeScanned -= value; }
     }
     public static void ProcessInput(string text)
     {
-        TextInputDetector.ProcessInput(text);
+        Default.ProcessInput(text);
+    }
+    public static void ProcessPreviewInput(string text)
+    {
+        Preview.ProcessInput(text);
     }
     public static void SimulateBubbleFastInput(string barcode)
     {
-        TextInputDetector.SimulateFastInput(null, barcode);
-    }
-    public static void SimulateBubbleFastInput(object sender, string barcode)
-    {
-        TextInputDetector.SimulateFastInput(sender, barcode);
+        Default.Simulate(barcode);
     }
     public static void SimulateTunnelFastInput(string barcode)
     {
-        PreviewTextInputDetector.SimulateFastInput(null, barcode);
-    }
-    public static void SimulateTunnelFastInput(object sender, string barcode)
-    {
-        PreviewTextInputDetector.SimulateFastInput(sender, barcode);
+        Preview.Simulate(barcode);
     }
     public static void Reset()
     {
-        PreviewTextInputDetector.Reset();
-        TextInputDetector.Reset();
+        Preview.Reset();
+        Default.Reset();
     }
 }
